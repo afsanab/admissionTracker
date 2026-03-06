@@ -28,12 +28,12 @@ function getActiveTasks(admitTs) {
   const days = daysSince(admitTs);
   const tasks = [];
 
-  // H&P — always present from day 0
+  // H&P — always present from day 0, overdue after 48 hours
   tasks.push({
     id: "hp",
     key: "hp",
     label: "H & P",
-    dueDate: addDays(admitTs, 0),
+    dueDate: admitTs + 48 * 3600000,
     appearsOn: admitTs,
     cycle: 0,
   });
@@ -92,18 +92,25 @@ const NOW = Date.now();
 const DEMO_ADMIT_TS = NOW - 25 * 86400000;
 
 const DEMO_ADMISSIONS = [
-  { id: "a1", last: "Johnson", first: "Margaret", dob: "1942-03-18", room: "214-A", arrival: "2026-03-04T14:00", insurance: "Medicare", dx: "Hip fracture post-ORIF", notes: "Allergic to penicillin. Family contact: daughter (Sara) 555-2819.", status: "pending", admitTs: null },
-  { id: "a2", last: "Rivera", first: "Carlos", dob: "1938-11-05", room: "108-B", arrival: "2026-03-04T10:30", insurance: "Medicaid", dx: "CVA with left hemiplegia", notes: "Speech therapy consult needed. Wife is healthcare proxy.", status: "inhouse", admitTs: DEMO_ADMIT_TS },
-  { id: "a3", last: "Williams", first: "Dorothy", dob: "1951-07-22", room: "", arrival: "2026-03-04T16:30", insurance: "Medicare Advantage", dx: "COPD exacerbation", notes: "Home O2 dependent. Current PCP Dr. Patel. Full code.", status: "pending", admitTs: null },
+  { id: "a1", last: "Johnson", first: "Margaret", dob: "1942-03-18", room: "214-A", arrival: "2026-03-04T14:00", dx: "Hip fracture post-ORIF", notes: "Allergic to penicillin. Family contact: daughter (Sara) 555-2819.", status: "pending", admitTs: null, physician: "Dr. Smith", location: "Sunrise Care Center" },
+  { id: "a2", last: "Rivera", first: "Carlos", dob: "1938-11-05", room: "108-B", arrival: "2026-03-04T10:30", dx: "CVA with left hemiplegia", notes: "Speech therapy consult needed. Wife is healthcare proxy.", status: "inhouse", admitTs: DEMO_ADMIT_TS, physician: "Dr. Smith", location: "Sunrise Care Center" },
+  { id: "a3", last: "Williams", first: "Dorothy", dob: "1951-07-22", room: "", arrival: "2026-03-04T16:30", dx: "COPD exacerbation", notes: "Home O2 dependent. Current PCP Dr. Patel. Full code.", status: "pending", admitTs: null, physician: "Dr. Patel", location: "Maplewood Nursing Home" },
+  { id: "a4", last: "Thompson", first: "Robert", dob: "1945-08-12", room: "302-C", arrival: "2026-03-03T09:00", dx: "CHF exacerbation", notes: "On diuretics. Fluid restriction 1.5L/day.", status: "inhouse", admitTs: NOW - 2 * 86400000, physician: "Dr. Smith", location: "Maplewood Nursing Home" },
+  { id: "a5", last: "Garcia", first: "Elena", dob: "1952-04-30", room: "110-A", arrival: "2026-03-02T11:00", dx: "Pneumonia", notes: "On IV antibiotics. Isolation precautions.", status: "inhouse", admitTs: NOW - 3 * 86400000, physician: "Dr. Patel", location: "Harbor View SNF" },
 ];
 
 function buildDemoTaskState() {
-  // Rivera: H&P assigned, 30-day just appeared
   return {
     a2: {
-      "hp": { status: "pending", assignedAt: DEMO_ADMIT_TS + 3600000, completedAt: null, completedBy: null, note: "Please complete H&P within 24hrs of admit." },
+      "hp": { status: "pending", assignedAt: DEMO_ADMIT_TS + 3600000, completedAt: null, completedBy: null, note: "Please complete H&P within 48hrs of admit." },
       "30day": { status: "pending", assignedAt: null, completedAt: null, completedBy: null, note: "" },
-    }
+    },
+    a4: {
+      "hp": { status: "completed", assignedAt: NOW - 2 * 86400000 + 3600000, completedAt: NOW - 86400000, completedBy: "Dr. Smith", note: "H&P completed on admission." },
+    },
+    a5: {
+      "hp": { status: "pending", assignedAt: NOW - 3 * 86400000 + 3600000, completedAt: null, completedBy: null, note: "Please review isolation protocol." },
+    },
   };
 }
 
@@ -186,7 +193,7 @@ function TaskPanel({ admission, activeTasks, onClose, onAssign, onComplete, onUp
         {/* Header */}
         <div style={{ background: C.navy, padding: "18px 22px", display: "flex", justifyContent: "space-between", alignItems: "center", flexShrink: 0 }}>
           <div>
-            <div style={{ color: "#fff", fontWeight: 700, fontSize: 16 }}>📋 Clinical Tasks</div>
+            <div style={{ color: "#fff", fontWeight: 700, fontSize: 16 }}>Clinical Tasks</div>
             <div style={{ color: "rgba(255,255,255,0.55)", fontSize: 12, marginTop: 2 }}>{admission.last}, {admission.first}</div>
           </div>
           <button onClick={onClose} style={{ width: 32, height: 32, borderRadius: 8, border: "1px solid rgba(255,255,255,0.2)", background: "rgba(255,255,255,0.08)", cursor: "pointer", fontSize: 16, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center" }}>✕</button>
@@ -204,7 +211,6 @@ function TaskPanel({ admission, activeTasks, onClose, onAssign, onComplete, onUp
               const dotIcon = t.status === "completed" ? "✓" : over ? "!" : t.assignedAt ? "●" : "○";
               return (
                 <button key={t.id} onClick={() => setActiveId(t.id)} style={{ padding: "12px 18px", border: "none", borderBottom: `3px solid ${isActive ? C.blue : "transparent"}`, background: isActive ? C.surface : "transparent", color: isActive ? C.blue : C.muted, fontWeight: 700, fontSize: 12, cursor: "pointer", fontFamily: "inherit", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, marginBottom: -2, minWidth: 80, flexShrink: 0 }}>
-                  <span style={{ fontSize: 17, color: dotColor, lineHeight: 1 }}>{dotIcon}</span>
                   <span>{t.label}</span>
                   <span style={{ fontSize: 10, fontWeight: 500, color: over ? C.red : soon ? C.yellow : C.light }}>
                     {t.status === "completed" ? "Done" : over ? `${Math.abs(due)}d overdue` : due === 0 ? "Due today" : `${due}d left`}
@@ -228,8 +234,12 @@ function TaskPanel({ admission, activeTasks, onClose, onAssign, onComplete, onUp
                 border: `2px solid ${task.status === "completed" ? C.greenBorder : isOverdue ? C.red : isDueSoon ? C.yellow : C.yellowBorder}`,
               }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-                  <div style={{ fontSize: 36, lineHeight: 1, flexShrink: 0 }}>
-                    {task.status === "completed" ? "✅" : isOverdue ? "🚨" : isDueSoon ? "⚠️" : task.assignedAt ? "⏳" : "🔘"}
+                  <div style={{
+                    width: 36, height: 36, borderRadius: "50%", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 900, fontSize: 18,
+                    background: task.status === "completed" ? C.green : isOverdue ? C.red : isDueSoon ? C.yellow : C.yellowBorder,
+                    color: "#fff"
+                  }}>
+                    {task.status === "completed" ? "✓" : isOverdue ? "!" : isDueSoon ? "!" : "●"}
                   </div>
                   <div style={{ flex: 1 }}>
                     <div style={{ fontWeight: 800, fontSize: 16, color: task.status === "completed" ? C.green : isOverdue ? C.red : isDueSoon ? "#a06000" : "#7a4f08", marginBottom: 4 }}>
@@ -261,7 +271,7 @@ function TaskPanel({ admission, activeTasks, onClose, onAssign, onComplete, onUp
               <div style={{ display: "flex", gap: 10 }}>
                 {isAdmin && task.status !== "completed" && !task.assignedAt && (
                   <button onClick={() => onAssign(admission.id, task.id, false)} style={{ flex: 1, padding: "13px 16px", background: C.yellow, color: "#fff", border: "none", borderRadius: 10, fontFamily: "inherit", fontSize: 14, fontWeight: 700, cursor: "pointer", letterSpacing: "0.01em" }}>
-                    📤 Assign to Physician
+                    Assign to Physician
                   </button>
                 )}
                 {isAdmin && task.status !== "completed" && task.assignedAt && (
@@ -271,7 +281,7 @@ function TaskPanel({ admission, activeTasks, onClose, onAssign, onComplete, onUp
                 )}
                 {isPhysician && task.assignedAt && task.status !== "completed" && (
                   <button onClick={() => onComplete(admission.id, task.id, userName)} style={{ flex: 1, padding: "13px 16px", background: C.green, color: "#fff", border: "none", borderRadius: 10, fontFamily: "inherit", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>
-                    ✅ Mark Complete
+                    Mark Complete
                   </button>
                 )}
                 {isPhysician && !task.assignedAt && task.status !== "completed" && (
@@ -281,7 +291,7 @@ function TaskPanel({ admission, activeTasks, onClose, onAssign, onComplete, onUp
                 )}
                 {task.status === "completed" && (
                   <div style={{ flex: 1, padding: "13px 16px", background: C.greenLight, color: C.green, borderRadius: 10, fontSize: 14, fontWeight: 700, textAlign: "center", border: `1.5px solid ${C.greenBorder}` }}>
-                    ✅ Completed by {task.completedBy}
+                    Completed by {task.completedBy}
                   </div>
                 )}
               </div>
@@ -297,7 +307,7 @@ function TaskPanel({ admission, activeTasks, onClose, onAssign, onComplete, onUp
 
 // ── ADD/EDIT MODAL ──
 function AdmissionModal({ admission, onSave, onClose }) {
-  const empty = { last: "", first: "", dob: "", room: "", arrival: "", insurance: "", dx: "", notes: "", status: "pending" };
+  const empty = { last: "", first: "", dob: "", room: "", arrival: "", dx: "", notes: "", status: "pending", physician: "", location: "" };
   const [form, setForm] = useState(admission ? { ...admission } : empty);
   const [err, setErr] = useState("");
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
@@ -318,28 +328,22 @@ function AdmissionModal({ admission, onSave, onClose }) {
   }
 
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(10,15,30,0.55)", backdropFilter: "blur(3px)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }} onClick={onClose}>
-      <div style={{ background: C.surface, borderRadius: 16, width: "100%", maxWidth: 500, boxShadow: "0 12px 32px rgba(0,0,0,0.2)", maxHeight: "90vh", overflowY: "auto" }} onClick={e => e.stopPropagation()}>
-        <div style={{ padding: "18px 24px 14px", borderBottom: `1px solid ${C.border}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+    <div style={{ position: "fixed", inset: 0, background: "rgba(10,15,30,0.55)", backdropFilter: "blur(3px)", zIndex: 200, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "16px 12px", overflowY: "auto" }} onClick={onClose}>
+      <div style={{ background: C.surface, borderRadius: 16, width: "100%", maxWidth: 500, boxShadow: "0 12px 32px rgba(0,0,0,0.2)", marginTop: "auto", marginBottom: "auto" }} onClick={e => e.stopPropagation()}>
+        <div style={{ padding: "16px 20px 14px", borderBottom: `1px solid ${C.border}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div style={{ fontFamily: "Georgia,serif", fontSize: 20 }}>{admission ? "Edit Admission" : "New Admission"}</div>
-          <button onClick={onClose} style={{ width: 30, height: 30, borderRadius: 7, border: `1px solid ${C.border}`, background: C.bg, cursor: "pointer", fontSize: 14, color: C.muted }}>✕</button>
+          <button onClick={onClose} style={{ width: 32, height: 32, borderRadius: 7, border: `1px solid ${C.border}`, background: C.bg, cursor: "pointer", fontSize: 16, color: C.muted }}>✕</button>
         </div>
-        <div style={{ padding: "18px 24px" }}>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-            <div>{field("Last Name *", "last", "text", "Last name")}</div>
-            <div>{field("First Name *", "first", "text", "First name")}</div>
-            <div>{field("Date of Birth *", "dob", "date")}</div>
-            <div>{field("Room", "room", "text", "e.g. 214-A")}</div>
-            <div>{field("Est. Arrival", "arrival", "datetime-local")}</div>
-            <div style={{ marginBottom: 14 }}>
-              <Label>Insurance</Label>
-              <select value={form.insurance} onChange={e => set("insurance", e.target.value)} style={{ ...iStyle }}>
-                <option value="">— Select —</option>
-                {["Medicare", "Medicaid", "Medicare Advantage", "Commercial / Private", "VA Benefits", "Self-Pay", "Other"].map(o => <option key={o}>{o}</option>)}
-              </select>
-            </div>
-          </div>
+        <div style={{ padding: "16px 20px" }}>
+          {/* Single-column layout for mobile friendliness */}
+          {field("Last Name *", "last", "text", "Last name")}
+          {field("First Name *", "first", "text", "First name")}
+          {field("Date of Birth *", "dob", "date")}
+          {field("Room", "room", "text", "e.g. 214-A")}
+          {field("Est. Arrival", "arrival", "datetime-local")}
           {field("Diagnosis / Condition", "dx", "text", "Primary reason for admission")}
+          {field("Attending Physician", "physician", "text", "e.g. Dr. Smith")}
+          {field("Facility / Location", "location", "text", "e.g. Sunrise Care Center")}
           <div style={{ marginBottom: 14 }}>
             <Label>Clinical Notes</Label>
             <textarea value={form.notes} onChange={e => set("notes", e.target.value)} placeholder="Relevant history, precautions, special needs..." style={{ ...iStyle, minHeight: 72, resize: "vertical" }} />
@@ -347,15 +351,15 @@ function AdmissionModal({ admission, onSave, onClose }) {
           <div style={{ marginBottom: 14 }}>
             <Label>Status</Label>
             <select value={form.status} onChange={e => set("status", e.target.value)} style={{ ...iStyle }}>
-              <option value="pending">⏳ Pending</option>
-              <option value="inhouse">🟢 In House</option>
+              <option value="pending">Pending</option>
+              <option value="inhouse">In House</option>
             </select>
           </div>
           {err && <div style={{ color: C.red, fontSize: 12, marginBottom: 8 }}>{err}</div>}
         </div>
-        <div style={{ padding: "14px 24px 20px", borderTop: `1px solid ${C.border}`, display: "flex", gap: 10, justifyContent: "flex-end" }}>
-          <button onClick={onClose} style={{ padding: "9px 20px", border: `1.5px solid ${C.border}`, borderRadius: 8, background: C.surface, fontFamily: "inherit", fontSize: 13, fontWeight: 600, cursor: "pointer", color: C.muted }}>Cancel</button>
-          <button onClick={save} style={{ padding: "9px 24px", background: C.blue, color: "#fff", border: "none", borderRadius: 8, fontFamily: "inherit", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>Save Admission</button>
+        <div style={{ padding: "12px 20px 20px", borderTop: `1px solid ${C.border}`, display: "flex", gap: 10 }}>
+          <button onClick={onClose} style={{ flex: 1, padding: "11px", border: `1.5px solid ${C.border}`, borderRadius: 8, background: C.surface, fontFamily: "inherit", fontSize: 14, fontWeight: 600, cursor: "pointer", color: C.muted }}>Cancel</button>
+          <button onClick={save} style={{ flex: 2, padding: "11px", background: C.blue, color: "#fff", border: "none", borderRadius: 8, fontFamily: "inherit", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>Save Admission</button>
         </div>
       </div>
     </div>
@@ -380,16 +384,16 @@ function TaskPills({ activeTasks }) {
 
           if (isDone) {
             bg = C.greenLight; border = C.greenBorder; textColor = C.green;
-            iconEl = "✅"; dueLabel = "Complete";
+            iconEl = "✓"; dueLabel = "Complete";
           } else if (isOver) {
             bg = "#fff0ee"; border = C.red; textColor = C.red;
-            iconEl = "🚨"; dueLabel = `${Math.abs(due)}d overdue`;
+            iconEl = "!"; dueLabel = `${Math.abs(due)}d overdue`;
           } else if (isSoon) {
             bg = "#fffbf0"; border = C.yellow; textColor = "#7a4f08";
-            iconEl = "⚠️"; dueLabel = due === 0 ? "Due today!" : `${due}d left`;
+            iconEl = "!"; dueLabel = due === 0 ? "Due today" : `${due}d left`;
           } else if (t.assignedAt) {
             bg = C.yellowLight; border = C.yellowBorder; textColor = "#7a4f08";
-            iconEl = "⏳"; dueLabel = `Due ${fmtDate(t.dueDate)}`;
+            iconEl = "●"; dueLabel = `Due ${fmtDate(t.dueDate)}`;
           } else {
             bg = "#f4f1ec"; border = C.border; textColor = C.muted;
             iconEl = "○"; dueLabel = `Due ${fmtDate(t.dueDate)}`;
@@ -437,7 +441,7 @@ function AdmissionCard({ admission, activeTasks, canEdit, onEdit, onDelete, onPr
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           {!isPending && overdueTasks.length > 0 && (
             <span style={{ background: C.red, color: "#fff", fontSize: 10, fontWeight: 800, padding: "2px 8px", borderRadius: 10, letterSpacing: "0.05em" }}>
-              🚨 {overdueTasks.length} OVERDUE
+              {overdueTasks.length} OVERDUE
             </span>
           )}
           <span style={{ fontFamily: "monospace", fontSize: 11, color: C.muted }}>{fmtArrival(admission.arrival)}</span>
@@ -448,12 +452,24 @@ function AdmissionCard({ admission, activeTasks, canEdit, onEdit, onDelete, onPr
         <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 2 }}>{admission.last}, {admission.first}</div>
         <div style={{ fontSize: 12, color: C.muted, marginBottom: 12, fontFamily: "monospace" }}>{fmtAge(admission.dob)}</div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 10 }}>
-          {[["Room", admission.room || "—"], ["Insurance", admission.insurance || "—"]].map(([l, v]) => (
+          {[["Room", admission.room || "—"]].map(([l, v]) => (
             <div key={l}>
               <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: C.light, marginBottom: 2 }}>{l}</div>
               <div style={{ fontSize: 13, fontWeight: 500 }}>{v}</div>
             </div>
           ))}
+          {admission.location && (
+            <div>
+              <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: C.light, marginBottom: 2 }}>Facility</div>
+              <div style={{ fontSize: 13, fontWeight: 500 }}>{admission.location}</div>
+            </div>
+          )}
+          {admission.physician && (
+            <div style={{ gridColumn: "1/-1" }}>
+              <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: C.light, marginBottom: 2 }}>Physician</div>
+              <div style={{ fontSize: 13, fontWeight: 500 }}>{admission.physician}</div>
+            </div>
+          )}
           <div style={{ gridColumn: "1/-1" }}>
             <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: C.light, marginBottom: 2 }}>Diagnosis</div>
             <div style={{ fontSize: 13, fontWeight: 500 }}>{admission.dx || "—"}</div>
@@ -468,23 +484,23 @@ function AdmissionCard({ admission, activeTasks, canEdit, onEdit, onDelete, onPr
       </div>
 
       {/* Footer buttons */}
-      <div style={{ display: "flex", gap: 7, padding: "10px 16px 14px", flexWrap: "wrap", borderTop: `1px solid ${C.border}`, background: "#f7f4f0" }}>
+      <div style={{ display: "flex", gap: 6, padding: "8px 12px 12px", flexWrap: "wrap", borderTop: `1px solid ${C.border}`, background: "#f7f4f0" }}>
         {isPending && canEdit && (
-          <button onClick={() => onPromote(admission.id)} style={{ flex: 1, padding: "9px 8px", borderRadius: 8, border: `1.5px solid ${C.greenBorder}`, background: C.greenLight, color: "#14542e", fontFamily: "inherit", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>✅ Mark In House</button>
+          <button onClick={() => onPromote(admission.id)} style={{ flex: 1, padding: "8px 6px", borderRadius: 8, border: `1.5px solid ${C.greenBorder}`, background: C.greenLight, color: "#14542e", fontFamily: "inherit", fontSize: 12, fontWeight: 700, cursor: "pointer", minWidth: 110 }}>Mark In House</button>
         )}
         {!isPending && (
-          <button onClick={() => onOpenTasks(admission.id)} style={{ flex: 2, padding: "9px 8px", borderRadius: 8, border: `2px solid ${hasUrgent ? C.red : openTasks.length > 0 ? C.yellowBorder : C.greenBorder}`, background: hasUrgent ? "#fff0ee" : openTasks.length > 0 ? C.yellowLight : C.greenLight, color: hasUrgent ? C.red : openTasks.length > 0 ? "#7a4f08" : "#14542e", fontFamily: "inherit", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
-            {hasUrgent ? "🚨 Manage Tasks" : openTasks.length > 0 ? "⏳ Manage Tasks" : "✅ Manage Tasks"}
+          <button onClick={() => onOpenTasks(admission.id)} style={{ flex: 2, padding: "8px 6px", borderRadius: 8, border: `2px solid ${hasUrgent ? C.red : openTasks.length > 0 ? C.yellowBorder : C.greenBorder}`, background: hasUrgent ? "#fff0ee" : openTasks.length > 0 ? C.yellowLight : C.greenLight, color: hasUrgent ? C.red : openTasks.length > 0 ? "#7a4f08" : "#14542e", fontFamily: "inherit", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+            Manage Tasks
           </button>
         )}
         {canEdit && (
-          <button onClick={() => onEdit(admission)} style={{ flex: 1, padding: "9px 8px", borderRadius: 8, border: `1.5px solid ${C.border}`, background: C.surface, color: C.muted, fontFamily: "inherit", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>✏️ Edit</button>
+          <button onClick={() => onEdit(admission)} style={{ padding: "8px 10px", borderRadius: 8, border: `1.5px solid ${C.border}`, background: C.surface, color: C.muted, fontFamily: "inherit", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>Edit</button>
         )}
         {!isPending && canEdit && (
-          <button onClick={() => onDischarge(admission.id)} style={{ padding: "9px 12px", borderRadius: 8, border: `1.5px solid ${C.red}`, background: C.redLight, color: C.red, fontFamily: "inherit", fontSize: 12, fontWeight: 700, cursor: "pointer" }} title="Discharge">🏠 DC</button>
+          <button onClick={() => onDischarge(admission.id)} style={{ padding: "8px 10px", borderRadius: 8, border: `1.5px solid ${C.red}`, background: C.redLight, color: C.red, fontFamily: "inherit", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Discharge</button>
         )}
         {isPending && canEdit && (
-          <button onClick={() => onDelete(admission.id)} style={{ padding: "9px 12px", borderRadius: 8, border: `1.5px solid ${C.border}`, background: C.surface, color: C.muted, fontFamily: "inherit", fontSize: 12, cursor: "pointer" }}>🗑</button>
+          <button onClick={() => onDelete(admission.id)} style={{ padding: "8px 10px", borderRadius: 8, border: `1.5px solid ${C.border}`, background: C.surface, color: C.muted, fontFamily: "inherit", fontSize: 12, cursor: "pointer" }}>Remove</button>
         )}
       </div>
     </div>
@@ -497,6 +513,9 @@ export default function App() {
   const [admissions, setAdmissions] = useState([]);
   const [taskState, setTaskState] = useState({}); // { patientId: { taskId: { status, assignedAt, completedAt, completedBy, note } } }
   const [filter, setFilter] = useState("all");
+  const [physicianFilter, setPhysicianFilter] = useState("all");
+  const [taskFilter, setTaskFilter] = useState("all"); // "all" | "open" | "overdue"
+  const [locationFilter, setLocationFilter] = useState("all");
   const [modal, setModal] = useState(null);
   const [tasksId, setTasksId] = useState(null);
   const [dischargeId, setDischargeId] = useState(null);
@@ -510,13 +529,9 @@ export default function App() {
   if (!user) return <AuthScreen onLogin={handleLogin} />;
 
   const canEdit = user.role === "admin";
-  const filtered = admissions.filter(a => filter === "all" || a.status === filter);
-  const pendingCount = admissions.filter(a => a.status === "pending").length;
-  const inhouseCount = admissions.filter(a => a.status === "inhouse").length;
-  const displayName = user.role === "physician"
-    ? `Dr. ${capitalize(user.username.split(".").pop())}`
-    : capitalize(user.username.replace(".", " "));
-  const initials = user.username.split(".").map(s => s[0]?.toUpperCase() || "").join("").slice(0, 2) || "U";
+  const canAdd = true; // both roles can add patients
+  const physicianList = [...new Set(admissions.map(a => a.physician).filter(Boolean))].sort();
+  const locationList = [...new Set(admissions.map(a => a.location).filter(Boolean))].sort();
 
   // Build merged tasks for each patient
   function getPatientTasks(admission) {
@@ -525,6 +540,25 @@ export default function App() {
     const saved = taskState[admission.id] || {};
     return mergeTaskState(defs, saved);
   }
+
+  const filtered = admissions.filter(a => {
+    if (filter !== "all" && a.status !== filter) return false;
+    if (physicianFilter !== "all" && a.physician !== physicianFilter) return false;
+    if (locationFilter !== "all" && a.location !== locationFilter) return false;
+    if (taskFilter !== "all") {
+      const t = getPatientTasks(a);
+      if (!t) return false;
+      if (taskFilter === "open") return t.some(x => x.assignedAt && x.status !== "completed");
+      if (taskFilter === "overdue") return t.some(x => x.status !== "completed" && Math.ceil((x.dueDate - Date.now()) / 86400000) < 0);
+    }
+    return true;
+  });
+  const pendingCount = admissions.filter(a => a.status === "pending").length;
+  const inhouseCount = admissions.filter(a => a.status === "inhouse").length;
+  const displayName = user.role === "physician"
+    ? `Dr. ${capitalize(user.username.split(".").pop())}`
+    : capitalize(user.username.replace(".", " "));
+  const initials = user.username.split(".").map(s => s[0]?.toUpperCase() || "").join("").slice(0, 2) || "U";
 
   const openTaskCount = admissions.reduce((acc, a) => {
     const t = getPatientTasks(a);
@@ -601,7 +635,7 @@ export default function App() {
   return (
     <div style={{ minHeight: "100vh", background: C.bg, fontFamily: "'DM Sans',system-ui,sans-serif", fontSize: 14 }}>
       {/* Topbar */}
-      <div style={{ background: C.navy, color: "#fff", padding: "0 24px", height: 56, display: "flex", alignItems: "center", justifyContent: "space-between", position: "sticky", top: 0, zIndex: 100, boxShadow: "0 2px 8px rgba(0,0,0,0.3)" }}>
+      <div style={{ background: C.navy, color: "#fff", padding: "0 16px", height: 56, display: "flex", alignItems: "center", justifyContent: "space-between", position: "sticky", top: 0, zIndex: 100, boxShadow: "0 2px 8px rgba(0,0,0,0.3)" }}>
         <div style={{ fontFamily: "Georgia,serif", fontSize: 20 }}>Care<em style={{ color: "#7aabf0" }}>Track</em></div>
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "rgba(255,255,255,0.8)" }}>
@@ -612,44 +646,77 @@ export default function App() {
         </div>
       </div>
 
-      <div style={{ maxWidth: 1100, margin: "0 auto", padding: "28px 24px" }}>
+      <div style={{ maxWidth: 1100, margin: "0 auto", padding: "20px 16px" }}>
         {/* Stats */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 14, marginBottom: 28 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 12, marginBottom: 24 }}>
           {[
-            ["⏳", pendingCount, C.yellow, "Pending", "#fff3e0"],
-            ["🏥", inhouseCount, C.green, "In House", C.greenLight],
-            ["📋", openTaskCount, C.blue, "Open Tasks", C.blueLight],
-            ["🚨", overdueCount, C.red, "Overdue Tasks", C.redLight],
-          ].map(([icon, num, color, label, bg]) => (
-            <div key={label} style={{ background: C.surface, borderRadius: 12, padding: "16px 18px", border: `1px solid ${C.border}`, display: "flex", alignItems: "center", gap: 12, boxShadow: num > 0 && label === "Overdue Tasks" ? `0 0 0 2px rgba(192,57,43,0.2)` : "none" }}>
-              <div style={{ width: 42, height: 42, borderRadius: 10, background: bg, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, flexShrink: 0 }}>{icon}</div>
-              <div>
-                <div style={{ fontSize: 24, fontWeight: 800, color, fontFamily: "monospace", lineHeight: 1 }}>{num}</div>
-                <div style={{ fontSize: 11, color: C.muted, fontWeight: 600, marginTop: 2 }}>{label}</div>
-              </div>
-            </div>
-          ))}
+            ["P", pendingCount, C.yellow, "Pending", "#fff3e0", "#7a4f08", () => { setFilter(filter === "pending" ? "all" : "pending"); setTaskFilter("all"); }],
+            ["H", inhouseCount, C.green, "In House", C.greenLight, "#14542e", () => { setFilter(filter === "inhouse" ? "all" : "inhouse"); setTaskFilter("all"); }],
+            ["T", openTaskCount, C.blue, "Open Tasks", C.blueLight, C.blue, () => { setTaskFilter(taskFilter === "open" ? "all" : "open"); setFilter("all"); }],
+            ["!", overdueCount, C.red, "Overdue Tasks", C.redLight, C.red, () => { setTaskFilter(taskFilter === "overdue" ? "all" : "overdue"); setFilter("all"); }],
+          ].map(([icon, num, color, label, bg, iconColor, onClick]) => {
+            const isActive =
+              (label === "Pending" && filter === "pending") ||
+              (label === "In House" && filter === "inhouse") ||
+              (label === "Open Tasks" && taskFilter === "open") ||
+              (label === "Overdue Tasks" && taskFilter === "overdue");
+            return (
+              <button key={label} onClick={onClick} style={{ background: C.surface, borderRadius: 12, padding: "16px 18px", border: `2px solid ${isActive ? color : C.border}`, display: "flex", alignItems: "center", gap: 12, boxShadow: isActive ? `0 0 0 3px ${color}30` : num > 0 && label === "Overdue Tasks" ? `0 0 0 2px rgba(192,57,43,0.2)` : "none", cursor: "pointer", textAlign: "left", width: "100%", fontFamily: "inherit", transition: "border-color 0.15s" }}>
+                <div style={{ width: 42, height: 42, borderRadius: 10, background: isActive ? color : bg, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, fontWeight: 900, color: isActive ? "#fff" : iconColor, flexShrink: 0 }}>{icon}</div>
+                <div>
+                  <div style={{ fontSize: 24, fontWeight: 800, color, fontFamily: "monospace", lineHeight: 1 }}>{num}</div>
+                  <div style={{ fontSize: 11, color: isActive ? color : C.muted, fontWeight: isActive ? 700 : 600, marginTop: 2 }}>{label}</div>
+                </div>
+              </button>
+            );
+          })}
         </div>
 
         {/* Toolbar */}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18, flexWrap: "wrap", gap: 10 }}>
-          <div style={{ display: "flex", gap: 8 }}>
-            {[["all", "All"], ["pending", "⏳ Pending"], ["inhouse", "🟢 In House"]].map(([f, label]) => (
-              <button key={f} onClick={() => setFilter(f)} style={{ padding: "7px 14px", borderRadius: 20, border: `1.5px solid ${filter === f ? C.blue : C.border}`, background: filter === f ? C.blueLight : C.surface, color: filter === f ? C.blue : C.muted, fontFamily: "inherit", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>{label}</button>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 16 }}>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+            {[
+              ["all", "All", filter === "all" ? C.blue : C.border, filter === "all" ? C.blueLight : C.surface, filter === "all" ? C.blue : C.muted],
+              ["pending", "Pending", filter === "pending" ? C.yellow : C.border, filter === "pending" ? C.yellowLight : C.surface, filter === "pending" ? "#7a4f08" : C.muted],
+              ["inhouse", "In House", filter === "inhouse" ? C.green : C.border, filter === "inhouse" ? C.greenLight : C.surface, filter === "inhouse" ? "#14542e" : C.muted],
+            ].map(([f, label, borderCol, bgCol, textCol]) => (
+              <button key={f} onClick={() => setFilter(f)} style={{ padding: "8px 18px", borderRadius: 20, border: `1.5px solid ${borderCol}`, background: bgCol, color: textCol, fontFamily: "inherit", fontSize: 14, fontWeight: 600, cursor: "pointer", minHeight: 40 }}>{label}</button>
             ))}
+            {canEdit && physicianList.length > 0 && (
+              <select value={physicianFilter} onChange={e => setPhysicianFilter(e.target.value)}
+                style={{ padding: "8px 14px", borderRadius: 20, border: `1.5px solid ${physicianFilter !== "all" ? C.blue : C.border}`, background: physicianFilter !== "all" ? C.blueLight : C.surface, color: physicianFilter !== "all" ? C.blue : C.muted, fontFamily: "inherit", fontSize: 14, fontWeight: 600, cursor: "pointer", outline: "none", minHeight: 40, appearance: "none", paddingRight: 32, backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%237a7570' stroke-width='2.5'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E")`, backgroundRepeat: "no-repeat", backgroundPosition: "right 12px center" }}>
+                <option value="all">All Physicians</option>
+                {physicianList.map(p => <option key={p} value={p}>{p}</option>)}
+              </select>
+            )}
+            {canEdit && locationList.length > 0 && (
+              <select value={locationFilter} onChange={e => setLocationFilter(e.target.value)}
+                style={{ padding: "8px 14px", borderRadius: 20, border: `1.5px solid ${locationFilter !== "all" ? C.blue : C.border}`, background: locationFilter !== "all" ? C.blueLight : C.surface, color: locationFilter !== "all" ? C.blue : C.muted, fontFamily: "inherit", fontSize: 14, fontWeight: 600, cursor: "pointer", outline: "none", minHeight: 40, appearance: "none", paddingRight: 32, backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%237a7570' stroke-width='2.5'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E")`, backgroundRepeat: "no-repeat", backgroundPosition: "right 12px center" }}>
+                <option value="all">All Locations</option>
+                {locationList.map(l => <option key={l} value={l}>{l}</option>)}
+              </select>
+            )}
           </div>
-          {canEdit && (
-            <button onClick={() => setModal({ type: "add" })} style={{ padding: "9px 18px", background: C.blue, color: "#fff", border: "none", borderRadius: 8, fontFamily: "inherit", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>+ New Admission</button>
+          {/* Physician view: location dropdown */}
+          {!canEdit && locationList.length > 0 && (
+            <select value={locationFilter} onChange={e => setLocationFilter(e.target.value)}
+              style={{ padding: "8px 14px", borderRadius: 20, border: `1.5px solid ${locationFilter !== "all" ? C.blue : C.border}`, background: locationFilter !== "all" ? C.blueLight : C.surface, color: locationFilter !== "all" ? C.blue : C.muted, fontFamily: "inherit", fontSize: 14, fontWeight: 600, cursor: "pointer", outline: "none", minHeight: 40, appearance: "none", paddingRight: 32, backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%237a7570' stroke-width='2.5'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E")`, backgroundRepeat: "no-repeat", backgroundPosition: "right 12px center", alignSelf: "flex-start" }}>
+              <option value="all">All Facilities</option>
+              {locationList.map(l => <option key={l} value={l}>{l}</option>)}
+            </select>
+          )}
+          {canAdd && (
+            <button onClick={() => setModal({ type: "add" })} style={{ width: "100%", padding: "12px", background: C.blue, color: "#fff", border: "none", borderRadius: 10, fontFamily: "inherit", fontSize: 15, fontWeight: 700, cursor: "pointer" }}>+ New Admission</button>
           )}
         </div>
 
         {/* Cards */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(340px,1fr))", gap: 16 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 340px), 1fr))", gap: 16 }}>
           {filtered.length === 0
             ? <div style={{ gridColumn: "1/-1", textAlign: "center", padding: "60px 24px", color: C.muted }}>
-              <div style={{ fontSize: 40, marginBottom: 12, opacity: 0.4 }}>🏥</div>
+              <div style={{ fontSize: 40, marginBottom: 12, opacity: 0.3, color: C.muted }}>+</div>
               <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 6, color: C.text }}>No admissions found</div>
-              <div style={{ fontSize: 13 }}>{canEdit ? "Add a new admission using the button above." : "Admissions staff will add entries here."}</div>
+              <div style={{ fontSize: 13 }}>Add a new admission using the button above.</div>
             </div>
             : filtered.map(a => (
               <AdmissionCard key={a.id} admission={a} activeTasks={getPatientTasks(a)} canEdit={canEdit}
@@ -680,7 +747,7 @@ export default function App() {
       {dischargeId && dischargeAdmission && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(10,15,30,0.6)", backdropFilter: "blur(4px)", zIndex: 300, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
           <div style={{ background: C.surface, borderRadius: 16, padding: "32px 28px", maxWidth: 380, width: "100%", boxShadow: "0 12px 40px rgba(0,0,0,0.25)", textAlign: "center" }}>
-            <div style={{ fontSize: 40, marginBottom: 12 }}>🏠</div>
+            <div style={{ fontSize: 40, marginBottom: 12, color: C.red, fontWeight: 900, lineHeight: 1 }}>DC</div>
             <div style={{ fontFamily: "Georgia,serif", fontSize: 20, marginBottom: 8 }}>Discharge Patient?</div>
             <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 8 }}>{dischargeAdmission.last}, {dischargeAdmission.first}</div>
             <div style={{ color: C.muted, fontSize: 13, marginBottom: 24, lineHeight: 1.6 }}>
