@@ -1,0 +1,12 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Secrets at repo root (if you add tooling here)
+.env
+.env.*
+!.env.example
+
+# Editor
+*.swp
+*.swo

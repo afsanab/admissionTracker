@@ -1,4 +1,18 @@
 import { useState, useEffect } from "react";
+import {
+  getStoredToken,
+  setStoredToken,
+  loadPatientsAndTasks,
+  patientRowToAdmission,
+  admissionToApiBody,
+  apiTasksToSavedMap,
+  syncTaskRowsForPatient,
+  auth,
+  invitations,
+  patients as patientsApi,
+  tasks as tasksApi,
+} from "./api.js";
+import { getActiveTasks, mergeTaskState } from "./taskLogic.js";
 
 // ── HELPERS ──
 function fmtAge(dob) {
@@ -17,101 +31,14 @@ function capitalize(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : "";
 function addDays(ts, days) { return ts + days * 86400000; }
 function daysSince(ts) { return Math.floor((Date.now() - ts) / 86400000); }
 
-// ── TASK LOGIC ──
-// H&P: appears on admit (day 0), due immediately
-// 30-Day: appears on day 21 (9 days notice), due day 30
-// 60-Day: appears on day 51 (9 days notice), due day 60, then repeats every 60 days
-// A "cycle" tracks which iteration of 60-day we're on
-
-function getActiveTasks(admitTs) {
-  if (!admitTs) return [];
-  const days = daysSince(admitTs);
-  const tasks = [];
-
-  // H&P — always present from day 0, overdue after 48 hours
-  tasks.push({
-    id: "hp",
-    key: "hp",
-    label: "H & P",
-    dueDate: admitTs + 48 * 3600000,
-    appearsOn: admitTs,
-    cycle: 0,
-  });
-
-  // 30-Day — appears on day 21, due day 30
-  if (days >= 21) {
-    tasks.push({
-      id: "30day",
-      key: "30day",
-      label: "30-Day",
-      dueDate: addDays(admitTs, 30),
-      appearsOn: addDays(admitTs, 21),
-      cycle: 0,
-    });
-  }
-
-  // 60-Day cycles — appears 9 days before each due date
-  // Cycle 1: due day 60, appears day 51
-  // Cycle 2: due day 120, appears day 111
-  // etc.
-  let cycle = 1;
-  while (true) {
-    const dueDay = 60 * cycle;
-    const appearsDay = dueDay - 9;
-    if (appearsDay > days) break; // not yet visible
-    tasks.push({
-      id: `60day-c${cycle}`,
-      key: "60day",
-      label: cycle === 1 ? "60-Day" : `60-Day #${cycle}`,
-      dueDate: addDays(admitTs, dueDay),
-      appearsOn: addDays(admitTs, appearsDay),
-      cycle,
-    });
-    cycle++;
-    if (cycle > 50) break; // safety cap
-  }
-
-  return tasks;
-}
-
-// Merge active task definitions with saved task state
-function mergeTaskState(activeTasks, savedState) {
-  return activeTasks.map(def => ({
-    ...def,
-    status: savedState[def.id]?.status || "pending",
-    assignedAt: savedState[def.id]?.assignedAt || null,
-    completedAt: savedState[def.id]?.completedAt || null,
-    completedBy: savedState[def.id]?.completedBy || null,
-    note: savedState[def.id]?.note || "",
-  }));
-}
-
-// ── DEMO DATA ──
-const NOW = Date.now();
-// Demo: Rivera admitted 25 days ago so 30-day task is visible
-const DEMO_ADMIT_TS = NOW - 25 * 86400000;
-
-const DEMO_ADMISSIONS = [
-  { id: "a1", last: "Johnson", first: "Margaret", dob: "1942-03-18", room: "214-A", arrival: "2026-03-04T14:00", dx: "Hip fracture post-ORIF", notes: "Allergic to penicillin. Family contact: daughter (Sara) 555-2819.", status: "pending", admitTs: null, physician: "Dr. Smith", location: "Sunrise Care Center" },
-  { id: "a2", last: "Rivera", first: "Carlos", dob: "1938-11-05", room: "108-B", arrival: "2026-03-04T10:30", dx: "CVA with left hemiplegia", notes: "Speech therapy consult needed. Wife is healthcare proxy.", status: "inhouse", admitTs: DEMO_ADMIT_TS, physician: "Dr. Smith", location: "Sunrise Care Center" },
-  { id: "a3", last: "Williams", first: "Dorothy", dob: "1951-07-22", room: "", arrival: "2026-03-04T16:30", dx: "COPD exacerbation", notes: "Home O2 dependent. Current PCP Dr. Patel. Full code.", status: "pending", admitTs: null, physician: "Dr. Patel", location: "Maplewood Nursing Home" },
-  { id: "a4", last: "Thompson", first: "Robert", dob: "1945-08-12", room: "302-C", arrival: "2026-03-03T09:00", dx: "CHF exacerbation", notes: "On diuretics. Fluid restriction 1.5L/day.", status: "inhouse", admitTs: NOW - 2 * 86400000, physician: "Dr. Smith", location: "Maplewood Nursing Home" },
-  { id: "a5", last: "Garcia", first: "Elena", dob: "1952-04-30", room: "110-A", arrival: "2026-03-02T11:00", dx: "Pneumonia", notes: "On IV antibiotics. Isolation precautions.", status: "inhouse", admitTs: NOW - 3 * 86400000, physician: "Dr. Patel", location: "Harbor View SNF" },
-];
-
-function buildDemoTaskState() {
-  return {
-    a2: {
-      "hp": { status: "pending", assignedAt: DEMO_ADMIT_TS + 3600000, completedAt: null, completedBy: null, note: "Please complete H&P within 48hrs of admit." },
-      "30day": { status: "pending", assignedAt: null, completedAt: null, completedBy: null, note: "" },
-    },
-    a4: {
-      "hp": { status: "completed", assignedAt: NOW - 2 * 86400000 + 3600000, completedAt: NOW - 86400000, completedBy: "Dr. Smith", note: "H&P completed on admission." },
-    },
-    a5: {
-      "hp": { status: "pending", assignedAt: NOW - 3 * 86400000 + 3600000, completedAt: null, completedBy: null, note: "Please review isolation protocol." },
-    },
-  };
+function formatPhysicianDisplay(raw) {
+  if (!raw) return "";
+  if (raw.includes(" ") && !raw.includes(".")) return raw;
+  return raw
+    .split(/[.\s]+/)
+    .filter(Boolean)
+    .map((seg) => (seg.toLowerCase() === "dr" ? "Dr." : seg.charAt(0).toUpperCase() + seg.slice(1).toLowerCase()))
+    .join(" ");
 }
 
 // ── COLORS ──
@@ -127,14 +54,27 @@ const C = {
 
 // ── AUTH ──
 function AuthScreen({ onLogin }) {
-  const [role, setRole] = useState("physician");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  function handleLogin() {
-    if (!username.trim() || !password.trim()) { setError("Please enter a username and passcode."); return; }
-    onLogin({ username: username.trim(), role });
+  async function handleLogin() {
+    if (!username.trim() || !password.trim()) {
+      setError("Please enter a username and password.");
+      return;
+    }
+    setError("");
+    setLoading(true);
+    try {
+      const { token, user: u } = await auth.login(username.trim(), password);
+      setStoredToken(token);
+      await onLogin({ username: u.username, role: u.role, fullName: u.fullName });
+    } catch (e) {
+      setError(e.message || "Sign in failed.");
+    } finally {
+      setLoading(false);
+    }
   }
 
   const iStyle = { width: "100%", padding: "11px 14px", border: `1.5px solid ${C.border}`, borderRadius: 8, fontFamily: "inherit", fontSize: 14, background: C.bg, outline: "none", boxSizing: "border-box" };
@@ -143,29 +83,217 @@ function AuthScreen({ onLogin }) {
     <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "linear-gradient(145deg,#1a2540,#243258,#1e3a5f)", padding: 24 }}>
       <div style={{ background: C.surface, borderRadius: 20, padding: "40px 36px", width: "100%", maxWidth: 420, boxShadow: "0 12px 40px rgba(0,0,0,0.3)" }}>
         <div style={{ fontFamily: "Georgia,serif", fontSize: 28, color: C.blue, marginBottom: 4 }}>Care<em>Track</em></div>
-        <div style={{ color: C.muted, fontSize: 13, marginBottom: 32 }}>Nursing Home Admissions Portal</div>
-
-        <Label>Select Role</Label>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 24 }}>
-          {[{ id: "physician", icon: "🩺", label: "Physician" }, { id: "admin", icon: "🗂️", label: "Admissions Staff" }].map(r => (
-            <button key={r.id} onClick={() => setRole(r.id)} style={{ padding: 12, border: `1.5px solid ${role === r.id ? C.blue : C.border}`, borderRadius: 8, background: role === r.id ? C.blueLight : C.bg, cursor: "pointer", color: role === r.id ? C.blue : C.muted, fontWeight: 600, fontSize: 13, fontFamily: "inherit" }}>
-              <div style={{ fontSize: 22, marginBottom: 4 }}>{r.icon}</div>{r.label}
-            </button>
-          ))}
+        <div style={{ color: C.muted, fontSize: 13, marginBottom: 8 }}>Nursing Home Admissions Portal</div>
+        <div style={{ color: C.light, fontSize: 12, marginBottom: 24, lineHeight: 1.5 }}>
+          Accounts are created through an invitation from your organization. Use your assigned username and password to sign in.
         </div>
 
-        <Label>Staff ID / Username</Label>
-        <input value={username} onChange={e => setUsername(e.target.value)} placeholder="e.g. dr.smith" style={{ ...iStyle, marginBottom: 14 }} />
-        <Label>Passcode</Label>
-        <input type="password" value={password} onChange={e => setPassword(e.target.value)} onKeyDown={e => e.key === "Enter" && handleLogin()} placeholder="••••••••" style={{ ...iStyle, marginBottom: 6 }} />
+        <Label>Username</Label>
+        <input value={username} onChange={e => setUsername(e.target.value)} placeholder="e.g. dr.smith" style={{ ...iStyle, marginBottom: 14 }} autoComplete="username" />
+        <Label>Password</Label>
+        <input type="password" value={password} onChange={e => setPassword(e.target.value)} onKeyDown={e => e.key === "Enter" && handleLogin()} placeholder="••••••••" style={{ ...iStyle, marginBottom: 6 }} autoComplete="current-password" />
 
         {error && <div style={{ color: C.red, fontSize: 12, marginBottom: 8 }}>{error}</div>}
 
-        <button onClick={handleLogin} style={{ width: "100%", padding: 13, background: C.blue, color: "#fff", border: "none", borderRadius: 8, fontFamily: "inherit", fontSize: 14, fontWeight: 700, cursor: "pointer", marginTop: 8, marginBottom: 16 }}>
-          Sign In Securely
+        <button disabled={loading} onClick={handleLogin} style={{ width: "100%", padding: 13, background: loading ? C.muted : C.blue, color: "#fff", border: "none", borderRadius: 8, fontFamily: "inherit", fontSize: 14, fontWeight: 700, cursor: loading ? "default" : "pointer", marginTop: 8, marginBottom: 16 }}>
+          {loading ? "Signing in…" : "Sign In Securely"}
         </button>
         <div style={{ background: C.blueLight, borderRadius: 8, padding: "11px 13px", fontSize: 12, color: C.blue, display: "flex", gap: 8 }}>
           🔒 <span>This system contains Protected Health Information (PHI). Access is governed by HIPAA. Unauthorized use is prohibited.</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AcceptInviteScreen({ token, onRegistered }) {
+  const [password, setPassword] = useState("");
+  const [fullName, setFullName] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [info, setInfo] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      if (inviteToken) {
+        setBooting(false);
+        return;
+      }
+
+      // ✅ NEW: prevent duplicate session loads
+      if (user) {
+        setBooting(false);
+        return;
+      }
+
+      const token = getStoredToken();
+      if (!token) {
+        setBooting(false);
+        return;
+      }
+
+      try {
+        const { user: u } = await auth.me();
+        if (cancelled) return;
+
+        await loadSession({
+          username: u.username,
+          role: u.role,
+          fullName: u.fullName,
+        });
+      } catch {
+        setStoredToken(null);
+      } finally {
+        if (!cancelled) setBooting(false);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [inviteToken, user]);
+
+  async function submit() {
+    if (password.length < 12) {
+      setError("Password must be at least 12 characters.");
+      return;
+    }
+    setError("");
+    setLoading(true);
+    try {
+      const { token: jwt, user: u } = await auth.register({ token, password, fullName: fullName.trim() || undefined });
+      setStoredToken(jwt);
+      await onRegistered({ username: u.username, role: u.role, fullName: u.fullName });
+    } catch (e) {
+      setError(e.message || "Registration failed.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const iStyle = { width: "100%", padding: "11px 14px", border: `1.5px solid ${C.border}`, borderRadius: 8, fontFamily: "inherit", fontSize: 14, background: C.bg, outline: "none", boxSizing: "border-box" };
+
+  if (loading && !info && !error) {
+    return (
+      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "linear-gradient(145deg,#1a2540,#243258,#1e3a5f)" }}>
+        <div style={{ color: "#fff", fontSize: 14 }}>Checking invitation…</div>
+      </div>
+    );
+  }
+
+  if (!info && error) {
+    return (
+      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "linear-gradient(145deg,#1a2540,#243258,#1e3a5f)", padding: 24 }}>
+        <div style={{ background: C.surface, borderRadius: 20, padding: "32px 28px", maxWidth: 400, textAlign: "center" }}>
+          <div style={{ color: C.red, fontWeight: 700, marginBottom: 8 }}>Invitation unavailable</div>
+          <div style={{ color: C.muted, fontSize: 14 }}>{error}</div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "linear-gradient(145deg,#1a2540,#243258,#1e3a5f)", padding: 24 }}>
+      <div style={{ background: C.surface, borderRadius: 20, padding: "40px 36px", width: "100%", maxWidth: 420, boxShadow: "0 12px 40px rgba(0,0,0,0.3)" }}>
+        <div style={{ fontFamily: "Georgia,serif", fontSize: 24, color: C.blue, marginBottom: 4 }}>Create your account</div>
+        <div style={{ color: C.muted, fontSize: 13, marginBottom: 20 }}>
+          Username <strong style={{ color: C.text }}>{info?.username}</strong>
+          {" · "}
+          {info?.role === "admin" ? "Admissions staff" : "Physician"}
+        </div>
+
+        <Label>Full name (optional)</Label>
+        <input value={fullName} onChange={e => setFullName(e.target.value)} placeholder="e.g. Dr. Jane Smith" style={{ ...iStyle, marginBottom: 14 }} />
+        <Label>Password (min. 12 characters)</Label>
+        <input type="password" value={password} onChange={e => setPassword(e.target.value)} onKeyDown={e => e.key === "Enter" && submit()} style={{ ...iStyle, marginBottom: 6 }} autoComplete="new-password" />
+
+        {error && <div style={{ color: C.red, fontSize: 12, marginBottom: 8 }}>{error}</div>}
+
+        <button disabled={loading} onClick={submit} style={{ width: "100%", padding: 13, background: loading ? C.muted : C.green, color: "#fff", border: "none", borderRadius: 8, fontFamily: "inherit", fontSize: 14, fontWeight: 700, cursor: loading ? "default" : "pointer", marginTop: 8 }}>
+          {loading ? "Creating account…" : "Activate account"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function InviteStaffModal({ onClose, onCreated }) {
+  const [username, setUsername] = useState("");
+  const [role, setRole] = useState("physician");
+  const [email, setEmail] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState(null);
+
+  async function submit() {
+    if (!username.trim()) {
+      setError("Username is required.");
+      return;
+    }
+    setError("");
+    setLoading(true);
+    try {
+      const data = await invitations.create({
+        username: username.trim(),
+        role,
+        email: email.trim() || undefined,
+      });
+      setResult(data);
+      onCreated?.();
+    } catch (e) {
+      setError(e.message || "Could not create invitation.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const iStyle = { width: "100%", padding: "10px 12px", border: `1.5px solid ${C.border}`, borderRadius: 8, fontFamily: "inherit", fontSize: 13, background: C.bg, outline: "none", boxSizing: "border-box" };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(10,15,30,0.55)", backdropFilter: "blur(3px)", zIndex: 400, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={onClose}>
+      <div style={{ background: C.surface, borderRadius: 16, width: "100%", maxWidth: 440, boxShadow: "0 12px 32px rgba(0,0,0,0.2)" }} onClick={e => e.stopPropagation()}>
+        <div style={{ padding: "16px 20px 14px", borderBottom: `1px solid ${C.border}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div style={{ fontFamily: "Georgia,serif", fontSize: 20 }}>Invite staff</div>
+          <button type="button" onClick={onClose} style={{ width: 32, height: 32, borderRadius: 7, border: `1px solid ${C.border}`, background: C.bg, cursor: "pointer", fontSize: 16, color: C.muted }}>✕</button>
+        </div>
+        <div style={{ padding: "16px 20px 20px" }}>
+          {result ? (
+            <>
+              <p style={{ fontSize: 13, color: C.muted, marginBottom: 12 }}>{result.message}</p>
+              {result.emailSent && (
+                <p style={{ fontSize: 12, color: C.green, fontWeight: 600, marginBottom: 10 }}>A message with the invite link was sent to the email address you entered.</p>
+              )}
+              {result.emailNote && (
+                <p style={{ fontSize: 12, color: C.yellow, marginBottom: 10 }}>{result.emailNote}</p>
+              )}
+              <Label>Invite link (copy if needed)</Label>
+              <input readOnly value={result.inviteUrl} style={{ ...iStyle, fontSize: 12, marginBottom: 12 }} onFocus={e => e.target.select()} />
+              <p style={{ fontSize: 11, color: C.light }}>Share this link only over secure channels. It expires on {new Date(result.invitation.expires_at).toLocaleString()}.</p>
+            </>
+          ) : (
+            <>
+              <p style={{ fontSize: 13, color: C.muted, marginBottom: 14 }}>The invited person will choose their password when they open the link. If the server is configured with Resend, filling in email below sends the link automatically.</p>
+              <div style={{ marginBottom: 12 }}>
+                <Label>Username (login ID)</Label>
+                <input value={username} onChange={e => setUsername(e.target.value)} placeholder="e.g. dr.lee" style={iStyle} />
+              </div>
+              <div style={{ marginBottom: 12 }}>
+                <Label>Role</Label>
+                <select value={role} onChange={e => setRole(e.target.value)} style={iStyle}>
+                  <option value="physician">Physician</option>
+                  <option value="admin">Admissions staff</option>
+                </select>
+              </div>
+              <div style={{ marginBottom: 12 }}>
+                <Label>Email (optional)</Label>
+                <input value={email} onChange={e => setEmail(e.target.value)} type="email" placeholder="colleague@clinic.com — invite link sent here when email is enabled" style={iStyle} />
+              </div>
+              {error && <div style={{ color: C.red, fontSize: 12, marginBottom: 8 }}>{error}</div>}
+              <button type="button" disabled={loading} onClick={submit} style={{ width: "100%", padding: 12, background: C.blue, color: "#fff", border: "none", borderRadius: 8, fontFamily: "inherit", fontSize: 14, fontWeight: 700, cursor: loading ? "default" : "pointer" }}>
+                {loading ? "Creating…" : "Create invitation"}
+              </button>
+            </>
+          )}
         </div>
       </div>
     </div>
@@ -467,7 +595,7 @@ function AdmissionCard({ admission, activeTasks, canEdit, onEdit, onDelete, onPr
           {admission.physician && (
             <div style={{ gridColumn: "1/-1" }}>
               <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: C.light, marginBottom: 2 }}>Physician</div>
-              <div style={{ fontSize: 13, fontWeight: 500 }}>{admission.physician}</div>
+              <div style={{ fontSize: 13, fontWeight: 500 }}>{formatPhysicianDisplay(admission.physician)}</div>
             </div>
           )}
           <div style={{ gridColumn: "1/-1" }}>
@@ -511,19 +639,96 @@ function AdmissionCard({ admission, activeTasks, canEdit, onEdit, onDelete, onPr
 export default function App() {
   const [user, setUser] = useState(null);
   const [admissions, setAdmissions] = useState([]);
-  const [taskState, setTaskState] = useState({}); // { patientId: { taskId: { status, assignedAt, completedAt, completedBy, note } } }
+  const [taskState, setTaskState] = useState({});
   const [filter, setFilter] = useState("all");
   const [physicianFilter, setPhysicianFilter] = useState("all");
-  const [taskFilter, setTaskFilter] = useState("all"); // "all" | "open" | "overdue"
+  const [taskFilter, setTaskFilter] = useState("all");
   const [locationFilter, setLocationFilter] = useState("all");
   const [modal, setModal] = useState(null);
   const [tasksId, setTasksId] = useState(null);
   const [dischargeId, setDischargeId] = useState(null);
+  const [booting, setBooting] = useState(true);
+  const [inviteToken, setInviteToken] = useState(() => new URLSearchParams(window.location.search).get("invite"));
+  const [inviteModal, setInviteModal] = useState(false);
 
-  function handleLogin({ username, role }) {
-    setUser({ username, role });
-    setAdmissions(DEMO_ADMISSIONS.map(a => ({ ...a })));
-    setTaskState(buildDemoTaskState());
+  const loadSession = async (u) => {
+    const { admissions: adm, taskState: ts } = await loadPatientsAndTasks();
+    setUser(u);
+    setAdmissions(adm);
+    setTaskState(ts);
+  };
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      if (inviteToken) {
+        setBooting(false);
+        return;
+      }
+
+      // ✅ CRITICAL: prevent re-loading if we already have a user
+      if (user) {
+        setBooting(false);
+        return;
+      }
+
+      const token = getStoredToken();
+      if (!token) {
+        setBooting(false);
+        return;
+      }
+
+      try {
+        const { user: u } = await auth.me();
+        if (cancelled) return;
+
+        await loadSession({
+          username: u.username,
+          role: u.role,
+          fullName: u.fullName,
+        });
+      } catch {
+        setStoredToken(null);
+      } finally {
+        if (!cancelled) setBooting(false);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [inviteToken, user]);
+
+  async function handleLogin(u) {
+    await loadSession(u);
+  }
+
+  async function handleInviteRegistered(u) {
+    window.history.replaceState({}, "", window.location.pathname);
+    setInviteToken(null);
+    setUser(u); // set user immediately for UI
+  }
+
+  async function handleSignOut() {
+    try {
+      await auth.logout();
+    } catch {
+      /* ignore */
+    }
+    setStoredToken(null);
+    setUser(null);
+    setAdmissions([]);
+    setTaskState({});
+  }
+
+  if (booting) {
+    return (
+      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: C.bg, fontFamily: "'DM Sans',system-ui,sans-serif" }}>
+        <div style={{ color: C.muted, fontSize: 14 }}>Loading…</div>
+      </div>
+    );
+  }
+
+  if (inviteToken && !user) {
+    return <AcceptInviteScreen token={inviteToken} onRegistered={handleInviteRegistered} />;
   }
 
   if (!user) return <AuthScreen onLogin={handleLogin} />;
@@ -555,10 +760,16 @@ export default function App() {
   });
   const pendingCount = admissions.filter(a => a.status === "pending").length;
   const inhouseCount = admissions.filter(a => a.status === "inhouse").length;
-  const displayName = user.role === "physician"
-    ? `Dr. ${capitalize(user.username.split(".").pop())}`
-    : capitalize(user.username.replace(".", " "));
-  const initials = user.username.split(".").map(s => s[0]?.toUpperCase() || "").join("").slice(0, 2) || "U";
+  const displayName = user.fullName?.trim()
+    ? user.fullName
+    : user.role === "physician"
+      ? `Dr. ${capitalize(user.username.split(".").pop())}`
+      : capitalize(user.username.replace(".", " "));
+  const initials = (user.fullName?.trim() || user.username)
+    .split(/\s+/)
+    .map((s) => s[0]?.toUpperCase() || "")
+    .join("")
+    .slice(0, 2) || "U";
 
   const openTaskCount = admissions.reduce((acc, a) => {
     const t = getPatientTasks(a);
@@ -572,61 +783,127 @@ export default function App() {
     return acc + t.filter(x => x.status !== "completed" && Math.ceil((x.dueDate - Date.now()) / 86400000) < 0).length;
   }, 0);
 
-  function promoteToInhouse(id) {
-    const admitTs = Date.now();
-    setAdmissions(prev => prev.map(a => a.id === id ? { ...a, status: "inhouse", admitTs } : a));
+  async function ensureTaskApiId(patientId, taskId) {
+    const admission = admissions.find((a) => a.id === patientId);
+    const saved = taskState[patientId]?.[taskId];
+    if (saved?.apiTaskId) return saved.apiTaskId;
+    if (!admission?.admitTs) return null;
+    await syncTaskRowsForPatient(patientId, admission.admitTs);
+    const { tasks: trows } = await tasksApi.list(patientId);
+    const m = apiTasksToSavedMap(trows);
+    setTaskState((prev) => ({ ...prev, [patientId]: { ...prev[patientId], ...m } }));
+    return m[taskId]?.apiTaskId;
   }
 
-  function dischargePatient(id) {
-    setAdmissions(prev => prev.filter(a => a.id !== id));
-    setTaskState(prev => { const n = { ...prev }; delete n[id]; return n; });
-    setDischargeId(null);
-    if (tasksId === id) setTasksId(null);
-  }
-
-  function saveAdmission(form) {
-    if (modal?.type === "edit") {
-      const prev = modal.admission;
-      setAdmissions(p => p.map(a => a.id === prev.id ? { ...a, ...form } : a));
-      if (prev.status !== "inhouse" && form.status === "inhouse") {
-        setAdmissions(p => p.map(a => a.id === prev.id ? { ...a, admitTs: Date.now() } : a));
-      }
-    } else {
-      const id = "a" + Date.now();
-      const admitTs = form.status === "inhouse" ? Date.now() : null;
-      setAdmissions(p => [{ id, ...form, admitTs }, ...p]);
+  async function promoteToInhouse(id) {
+    try {
+      await patientsApi.admit(id);
+      const { patient } = await patientsApi.get(id);
+      const adm = patientRowToAdmission(patient);
+      const admitTs = new Date(patient.admit_ts).getTime();
+      setAdmissions((prev) => prev.map((a) => (a.id === id ? adm : a)));
+      await syncTaskRowsForPatient(id, admitTs);
+      const { tasks: trows } = await tasksApi.list(id);
+      setTaskState((prev) => ({ ...prev, [id]: apiTasksToSavedMap(trows) }));
+    } catch (e) {
+      alert(e.message);
     }
-    setModal(null);
   }
 
-  function assignTask(patientId, taskId, unassign = false) {
-    setTaskState(prev => ({
+  async function dischargePatient(id) {
+    try {
+      await patientsApi.discharge(id);
+      setAdmissions((prev) => prev.filter((a) => a.id !== id));
+      setTaskState((prev) => {
+        const n = { ...prev };
+        delete n[id];
+        return n;
+      });
+      setDischargeId(null);
+      if (tasksId === id) setTasksId(null);
+    } catch (e) {
+      alert(e.message);
+    }
+  }
+
+  async function saveAdmission(form) {
+    try {
+      const body = admissionToApiBody(form);
+      if (modal?.type === "edit") {
+        const prev = modal.admission;
+        const { patient } = await patientsApi.update(prev.id, body);
+        setAdmissions((p) => p.map((a) => (a.id === prev.id ? patientRowToAdmission(patient) : a)));
+        if (patient.status === "inhouse" && patient.admit_ts) {
+          const ts = new Date(patient.admit_ts).getTime();
+          await syncTaskRowsForPatient(patient.id, ts);
+          const { tasks: trows } = await tasksApi.list(patient.id);
+          setTaskState((s) => ({ ...s, [patient.id]: apiTasksToSavedMap(trows) }));
+        }
+      } else {
+        const { patient } = await patientsApi.create(body);
+        setAdmissions((p) => [patientRowToAdmission(patient), ...p]);
+        if (patient.status === "inhouse" && patient.admit_ts) {
+          const ts = new Date(patient.admit_ts).getTime();
+          await syncTaskRowsForPatient(patient.id, ts);
+          const { tasks: trows } = await tasksApi.list(patient.id);
+          setTaskState((s) => ({ ...s, [patient.id]: apiTasksToSavedMap(trows) }));
+        }
+      }
+      setModal(null);
+    } catch (e) {
+      alert(e.message);
+    }
+  }
+
+  async function assignTask(patientId, taskId, unassign = false) {
+    try {
+      const tid = await ensureTaskApiId(patientId, taskId);
+      if (!tid) return;
+      await tasksApi.assign(patientId, tid, unassign ? { unassign: true } : {});
+      const { tasks: trows } = await tasksApi.list(patientId);
+      setTaskState((prev) => ({ ...prev, [patientId]: apiTasksToSavedMap(trows) }));
+    } catch (e) {
+      alert(e.message);
+    }
+  }
+
+  async function completeTask(patientId, taskId, _by) {
+    try {
+      const tid = await ensureTaskApiId(patientId, taskId);
+      if (!tid) return;
+      await tasksApi.complete(patientId, tid);
+      const { tasks: trows } = await tasksApi.list(patientId);
+      setTaskState((prev) => ({ ...prev, [patientId]: apiTasksToSavedMap(trows) }));
+    } catch (e) {
+      alert(e.message);
+    }
+  }
+
+  async function updateNote(patientId, taskId, note) {
+    setTaskState((prev) => ({
       ...prev,
       [patientId]: {
         ...(prev[patientId] || {}),
-        [taskId]: { ...(prev[patientId]?.[taskId] || {}), assignedAt: unassign ? null : Date.now() }
-      }
+        [taskId]: { ...(prev[patientId]?.[taskId] || {}), note },
+      },
     }));
+    try {
+      const tid = await ensureTaskApiId(patientId, taskId);
+      if (!tid) return;
+      await tasksApi.updateNote(patientId, tid, note);
+    } catch (e) {
+      alert(e.message);
+    }
   }
 
-  function completeTask(patientId, taskId, by) {
-    setTaskState(prev => ({
-      ...prev,
-      [patientId]: {
-        ...(prev[patientId] || {}),
-        [taskId]: { ...(prev[patientId]?.[taskId] || {}), status: "completed", completedAt: Date.now(), completedBy: by }
-      }
-    }));
-  }
-
-  function updateNote(patientId, taskId, note) {
-    setTaskState(prev => ({
-      ...prev,
-      [patientId]: {
-        ...(prev[patientId] || {}),
-        [taskId]: { ...(prev[patientId]?.[taskId] || {}), note }
-      }
-    }));
+  async function deletePending(id) {
+    if (!window.confirm("Remove this admission?")) return;
+    try {
+      await patientsApi.delete(id);
+      setAdmissions((p) => p.filter((x) => x.id !== id));
+    } catch (e) {
+      alert(e.message);
+    }
   }
 
   const tasksAdmission = admissions.find(a => a.id === tasksId);
@@ -638,11 +915,16 @@ export default function App() {
       <div style={{ background: C.navy, color: "#fff", padding: "0 16px", height: 56, display: "flex", alignItems: "center", justifyContent: "space-between", position: "sticky", top: 0, zIndex: 100, boxShadow: "0 2px 8px rgba(0,0,0,0.3)" }}>
         <div style={{ fontFamily: "Georgia,serif", fontSize: 20 }}>Care<em style={{ color: "#7aabf0" }}>Track</em></div>
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          {canEdit && (
+            <button type="button" onClick={() => setInviteModal(true)} style={{ background: "rgba(255,255,255,0.12)", border: "1px solid rgba(255,255,255,0.25)", color: "#fff", padding: "6px 14px", borderRadius: 6, fontFamily: "inherit", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
+              Invite staff
+            </button>
+          )}
           <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "rgba(255,255,255,0.8)" }}>
             <div style={{ width: 30, height: 30, borderRadius: "50%", background: C.blue, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700 }}>{initials}</div>
             {displayName} <span style={{ fontSize: 11, opacity: 0.6 }}>({user.role === "physician" ? "Physician" : "Admissions"})</span>
           </div>
-          <button onClick={() => setUser(null)} style={{ background: "rgba(255,255,255,0.1)", border: "1px solid rgba(255,255,255,0.2)", color: "rgba(255,255,255,0.7)", padding: "5px 12px", borderRadius: 6, fontFamily: "inherit", fontSize: 12, cursor: "pointer" }}>Sign Out</button>
+          <button type="button" onClick={handleSignOut} style={{ background: "rgba(255,255,255,0.1)", border: "1px solid rgba(255,255,255,0.2)", color: "rgba(255,255,255,0.7)", padding: "5px 12px", borderRadius: 6, fontFamily: "inherit", fontSize: 12, cursor: "pointer" }}>Sign Out</button>
         </div>
       </div>
 
@@ -686,7 +968,7 @@ export default function App() {
               <select value={physicianFilter} onChange={e => setPhysicianFilter(e.target.value)}
                 style={{ padding: "8px 14px", borderRadius: 20, border: `1.5px solid ${physicianFilter !== "all" ? C.blue : C.border}`, background: physicianFilter !== "all" ? C.blueLight : C.surface, color: physicianFilter !== "all" ? C.blue : C.muted, fontFamily: "inherit", fontSize: 14, fontWeight: 600, cursor: "pointer", outline: "none", minHeight: 40, appearance: "none", paddingRight: 32, backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%237a7570' stroke-width='2.5'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E")`, backgroundRepeat: "no-repeat", backgroundPosition: "right 12px center" }}>
                 <option value="all">All Physicians</option>
-                {physicianList.map(p => <option key={p} value={p}>{p}</option>)}
+                {physicianList.map(p => <option key={p} value={p}>{formatPhysicianDisplay(p)}</option>)}
               </select>
             )}
             {canEdit && locationList.length > 0 && (
@@ -721,7 +1003,7 @@ export default function App() {
             : filtered.map(a => (
               <AdmissionCard key={a.id} admission={a} activeTasks={getPatientTasks(a)} canEdit={canEdit}
                 onEdit={a => setModal({ type: "edit", admission: a })}
-                onDelete={id => { if (window.confirm("Remove this admission?")) setAdmissions(p => p.filter(x => x.id !== id)); }}
+                onDelete={deletePending}
                 onPromote={promoteToInhouse}
                 onDischarge={id => setDischargeId(id)}
                 onOpenTasks={id => setTasksId(id)}
@@ -759,6 +1041,13 @@ export default function App() {
             </div>
           </div>
         </div>
+      )}
+
+      {inviteModal && (
+        <InviteStaffModal
+          onClose={() => setInviteModal(false)}
+          onCreated={() => { }}
+        />
       )}
     </div>
   );

@@ -1,6 +1,5 @@
 const bcrypt = require("bcrypt");
 const { query } = require("../db/pool");
-const { v4: uuidv4 } = require("uuid");
 
 /**
  * GET /api/users
@@ -15,47 +14,6 @@ async function listUsers(req, res, next) {
     req.audit("LIST_USERS");
     res.json({ users: result.rows });
   } catch (err) {
-    next(err);
-  }
-}
-
-/**
- * POST /api/users
- * Create a new user — admin only.
- * Body: { username, password, fullName, role }
- */
-async function createUser(req, res, next) {
-  try {
-    const { username, password, fullName, role } = req.body;
-
-    if (!username || !password || !role) {
-      return res.status(400).json({ error: "username, password, and role are required." });
-    }
-    if (!["physician", "admin"].includes(role)) {
-      return res.status(400).json({ error: "Role must be 'physician' or 'admin'." });
-    }
-    if (password.length < 12) {
-      return res.status(400).json({ error: "Password must be at least 12 characters." });
-    }
-
-    const rounds = parseInt(process.env.BCRYPT_ROUNDS || "12");
-    const passwordHash = await bcrypt.hash(password, rounds);
-    const id = uuidv4();
-
-    const result = await query(
-      `INSERT INTO users (id, username, password_hash, full_name, role)
-       VALUES ($1, $2, $3, $4, $5)
-       RETURNING id, username, full_name, role, is_active, created_at`,
-      [id, username.trim().toLowerCase(), passwordHash, fullName || null, role]
-    );
-
-    req.audit("CREATE_USER", { details: { newUserId: id, username, role } });
-
-    res.status(201).json({ user: result.rows[0] });
-  } catch (err) {
-    if (err.code === "23505") {
-      return res.status(409).json({ error: "Username already exists." });
-    }
     next(err);
   }
 }
@@ -131,4 +89,4 @@ async function resetPassword(req, res, next) {
   }
 }
 
-module.exports = { listUsers, createUser, updateUser, resetPassword };
+module.exports = { listUsers, updateUser, resetPassword };

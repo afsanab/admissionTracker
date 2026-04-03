@@ -10,6 +10,11 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+
+# Env & local overrides (Vite: .env, .env.local, .env.[mode].local)
+.env
+.env.*
+!.env.example
 *.local
 
 # Editor directories and files

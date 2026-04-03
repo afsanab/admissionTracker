@@ -6,7 +6,7 @@
  *   VITE_API_URL=http://localhost:3001/api
  */
 
-const BASE = import.meta.env.VITE_API_URL || "http://localhost:3001/api";
+const BASE = import.meta.env.VITE_API_URL || "/api";
 
 // ── Token storage ─────────────────────────────────────────────
 // Stored in memory only (not localStorage) for HIPAA compliance.
@@ -49,6 +49,8 @@ export const auth = {
   login:          (username, password) => post("/auth/login", { username, password }),
   logout:         ()                   => post("/auth/logout"),
   me:             ()                   => get("/auth/me"),
+  inviteInfo:     (token)              => get(`/auth/invite-info?token=${encodeURIComponent(token)}`),
+  register:       (body)               => post("/auth/register", body),
   changePassword: (currentPassword, newPassword) =>
     post("/auth/change-password", { currentPassword, newPassword }),
 };
@@ -86,8 +88,14 @@ export const tasks = {
 // ── Users (admin only) ────────────────────────────────────────
 export const users = {
   list:          ()               => get("/users"),
-  create:        (data)           => post("/users", data),
   update:        (id, data)       => patch(`/users/${id}`, data),
   resetPassword: (id, newPassword) =>
     post(`/users/${id}/reset-password`, { newPassword }),
+};
+
+// ── Invitations (admin only) ─────────────────────────────────
+export const invitations = {
+  create: (data) => post("/invitations", data),
+  list:   ()     => get("/invitations"),
+  revoke: (id)   => del(`/invitations/${id}`),
 };

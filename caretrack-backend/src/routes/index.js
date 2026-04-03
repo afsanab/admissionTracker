@@ -2,15 +2,22 @@ const express = require("express");
 const router = express.Router();
 
 const { requireAuth, requireRole } = require("../middleware/auth");
-const { login, logout, me, changePassword } = require("../controllers/authController");
+const {
+  login, logout, me, changePassword, registerWithInvite,
+} = require("../controllers/authController");
 const {
   listPatients, getPatient, createPatient,
   updatePatient, admitPatient, dischargePatient, deletePatient,
 } = require("../controllers/patientsController");
 const { listTasks, upsertTask, assignTask, completeTask, updateTaskNote } = require("../controllers/tasksController");
-const { listUsers, createUser, updateUser, resetPassword } = require("../controllers/usersController");
+const { listUsers, updateUser, resetPassword } = require("../controllers/usersController");
+const {
+  createInvitation, listInvitations, revokeInvitation, inviteInfo,
+} = require("../controllers/invitationsController");
 
 // ── Auth ──────────────────────────────────────────────
+router.get("/auth/invite-info", inviteInfo);
+router.post("/auth/register", registerWithInvite);
 router.post("/auth/login", login);
 router.post("/auth/logout", requireAuth, logout);
 router.get("/auth/me", requireAuth, me);
@@ -39,9 +46,13 @@ router.patch("/patients/:patientId/tasks/:taskId/note", requireAuth, requireRole
 
 // ── Users (admin only) ────────────────────────────────
 router.get("/users", requireAuth, requireRole("admin"), listUsers);
-router.post("/users", requireAuth, requireRole("admin"), createUser);
 router.patch("/users/:id", requireAuth, requireRole("admin"), updateUser);
 router.post("/users/:id/reset-password", requireAuth, requireRole("admin"), resetPassword);
+
+// ── Invitations (admin creates signup links; no public user creation) ──
+router.post("/invitations", requireAuth, requireRole("admin"), createInvitation);
+router.get("/invitations", requireAuth, requireRole("admin"), listInvitations);
+router.delete("/invitations/:id", requireAuth, requireRole("admin"), revokeInvitation);
 
 // ── Health check ──────────────────────────────────────
 router.get("/health", (_req, res) => res.json({ status: "ok", timestamp: new Date().toISOString() }));

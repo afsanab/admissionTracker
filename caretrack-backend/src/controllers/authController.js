@@ -1,7 +1,9 @@
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
-const { query } = require("../db/pool");
+const { v4: uuidv4 } = require("uuid");
+const { query, withTransaction } = require("../db/pool");
 const { auditLog } = require("../middleware/audit");
+const { hashToken } = require("./invitationsController");
 
 /**
  * POST /api/auth/login
@@ -122,7 +124,16 @@ async function me(req, res, next) {
     if (!result.rows[0]) {
       return res.status(401).json({ error: "User not found or disabled." });
     }
-    res.json({ user: result.rows[0] });
+    const row = result.rows[0];
+    res.json({
+      user: {
+        id: row.id,
+        username: row.username,
+        fullName: row.full_name,
+        role: row.role,
+        lastLoginAt: row.last_login_at,
+      },
+    });
   } catch (err) {
     next(err);
   }
@@ -182,4 +193,119 @@ async function changePassword(req, res, next) {
   }
 }
 
-module.exports = { login, logout, me, changePassword };
+/**
+ * POST /api/auth/register
+ * Body: { token, password, fullName? }
+ * Completes signup from an admin invitation; returns JWT on success.
+ */
+async function registerWithInvite(req, res, next) {
+  const ip = req.ip || req.connection?.remoteAddress;
+
+  try {
+    const { token, password, fullName } = req.body;
+
+    if (!token || !password) {
+      return res.status(400).json({ error: "token and password are required." });
+    }
+    if (password.length < 12) {
+      return res.status(400).json({ error: "Password must be at least 12 characters." });
+    }
+
+    const tokenHash = hashToken(String(token).trim());
+
+    const userRow = await withTransaction(async (client) => {
+      const invRes = await client.query(
+        `SELECT id, username, role, expires_at
+         FROM invitations
+         WHERE token_hash = $1 AND used_at IS NULL
+         FOR UPDATE`,
+        [tokenHash]
+      );
+      const inv = invRes.rows[0];
+      if (!inv) {
+        return null;
+      }
+      if (new Date(inv.expires_at) <= new Date()) {
+        return { expired: true };
+      }
+
+      const exists = await client.query("SELECT 1 FROM users WHERE username = $1", [inv.username]);
+      if (exists.rows[0]) {
+        return { usernameTaken: true, username: inv.username };
+      }
+
+      const rounds = parseInt(process.env.BCRYPT_ROUNDS || "12");
+      const passwordHash = await bcrypt.hash(password, rounds);
+      const id = uuidv4();
+
+      await client.query(
+        `INSERT INTO users (id, username, password_hash, full_name, role)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [id, inv.username, passwordHash, fullName?.trim() || null, inv.role]
+      );
+      await client.query("UPDATE invitations SET used_at = NOW() WHERE id = $1", [inv.id]);
+
+      const u = await client.query(
+        "SELECT id, username, full_name, role FROM users WHERE id = $1",
+        [id]
+      );
+      return { user: u.rows[0] };
+    });
+
+    if (!userRow) {
+      auditLog({
+        action: "REGISTER_INVITE_FAILURE",
+        userId: "unknown",
+        username: "unknown",
+        role: "unknown",
+        ip,
+        outcome: "FAILURE",
+        details: { reason: "invalid_or_used_token" },
+      });
+      return res.status(400).json({ error: "Invalid or expired invitation." });
+    }
+    if (userRow.expired) {
+      return res.status(410).json({ error: "This invitation has expired." });
+    }
+    if (userRow.usernameTaken) {
+      return res.status(409).json({
+        error: `The username "${userRow.username}" is already registered.`,
+      });
+    }
+
+    const user = userRow.user;
+    const jwtPayload = {
+      id: user.id,
+      username: user.username,
+      role: user.role,
+      fullName: user.full_name,
+    };
+    const signed = jwt.sign(jwtPayload, process.env.JWT_SECRET, {
+      expiresIn: process.env.JWT_EXPIRES_IN || "8h",
+    });
+
+    auditLog({
+      action: "REGISTER_INVITE_SUCCESS",
+      userId: user.id,
+      username: user.username,
+      role: user.role,
+      ip,
+      outcome: "SUCCESS",
+    });
+
+    res.status(201).json({
+      token: signed,
+      user: {
+        id: user.id,
+        username: user.username,
+        role: user.role,
+        fullName: user.full_name,
+      },
+      expiresIn: process.env.JWT_EXPIRES_IN || "8h",
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = { login, logout, me, changePassword, registerWithInvite };
