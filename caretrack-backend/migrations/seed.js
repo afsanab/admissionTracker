@@ -10,14 +10,23 @@ const bcrypt = require("bcrypt");
 const { v4: uuidv4 } = require("uuid");
 const { Pool } = require("pg");
 
-const pool = new Pool({
-  host: process.env.DB_HOST,
-  port: parseInt(process.env.DB_PORT || "5432"),
-  database: process.env.DB_NAME,
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
-  ssl: process.env.DB_SSL === "true" ? { rejectUnauthorized: true } : false,
-});
+const connectionString = process.env.DATABASE_URL;
+
+const pool = new Pool(
+  connectionString
+    ? {
+      connectionString,
+      ssl: { rejectUnauthorized: false }, // required for Supabase
+    }
+    : {
+      host: process.env.DB_HOST,
+      port: parseInt(process.env.DB_PORT || "5432"),
+      database: process.env.DB_NAME,
+      user: process.env.DB_USER,
+      password: process.env.DB_PASSWORD,
+      ssl: process.env.DB_SSL === "true" ? { rejectUnauthorized: false } : false,
+    }
+);
 
 const ROUNDS = parseInt(process.env.BCRYPT_ROUNDS || "12");
 
@@ -32,10 +41,10 @@ async function seed() {
     console.log("Seeding users...");
 
     const users = [
-      { username: "dr.smith",  fullName: "Dr. James Smith",   role: "physician", password: "CareTrack2026!" },
-      { username: "dr.patel",  fullName: "Dr. Priya Patel",   role: "physician", password: "CareTrack2026!" },
-      { username: "admin",     fullName: "Admin User",         role: "admin",     password: "CareTrack2026!" },
-      { username: "j.garcia",  fullName: "Julia Garcia",       role: "admin",     password: "CareTrack2026!" },
+      { username: "dr.smith", fullName: "Dr. James Smith", role: "physician", password: "CareTrack2026!" },
+      { username: "dr.patel", fullName: "Dr. Priya Patel", role: "physician", password: "CareTrack2026!" },
+      { username: "admin", fullName: "Admin User", role: "admin", password: "CareTrack2026!" },
+      { username: "j.garcia", fullName: "Julia Garcia", role: "admin", password: "CareTrack2026!" },
     ];
 
     const userIds = {};
@@ -58,8 +67,8 @@ async function seed() {
 
     const NOW = Date.now();
     const ADMIT_25_DAYS_AGO = new Date(NOW - 25 * 86400000);
-    const ADMIT_2_DAYS_AGO  = new Date(NOW - 2  * 86400000);
-    const ADMIT_3_DAYS_AGO  = new Date(NOW - 3  * 86400000);
+    const ADMIT_2_DAYS_AGO = new Date(NOW - 2 * 86400000);
+    const ADMIT_3_DAYS_AGO = new Date(NOW - 3 * 86400000);
 
     const adminId = (await client.query("SELECT id FROM users WHERE username = 'admin' LIMIT 1")).rows[0]?.id;
 
@@ -120,7 +129,7 @@ async function seed() {
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
          ON CONFLICT DO NOTHING`,
         [p.id, p.firstName, p.lastName, p.dob, p.room, p.arrivalAt,
-         p.diagnosis, p.notes, p.status, p.admitTs, p.physician, p.location, adminId]
+        p.diagnosis, p.notes, p.status, p.admitTs, p.physician, p.location, adminId]
       );
       patientIds[`${p.lastName}`] = p.id;
       console.log(`  ✓ ${p.status.padEnd(10)} ${p.lastName}, ${p.firstName}`);
@@ -136,17 +145,17 @@ async function seed() {
          VALUES ($1,$2,'hp','H & P',0,$3,$4,'pending',$5,'j.garcia','Please complete H&P within 48hrs of admit.')
          ON CONFLICT (patient_id, task_key, cycle) DO NOTHING`,
         [uuidv4(), riveraId,
-         new Date(ADMIT_25_DAYS_AGO.getTime() + 48 * 3600000),
-         ADMIT_25_DAYS_AGO,
-         new Date(ADMIT_25_DAYS_AGO.getTime() + 3600000)]
+        new Date(ADMIT_25_DAYS_AGO.getTime() + 48 * 3600000),
+          ADMIT_25_DAYS_AGO,
+        new Date(ADMIT_25_DAYS_AGO.getTime() + 3600000)]
       );
       await client.query(
         `INSERT INTO tasks (id, patient_id, task_key, task_label, cycle, due_at, appears_at, status)
          VALUES ($1,$2,'30day','30-Day',0,$3,$4,'pending')
          ON CONFLICT (patient_id, task_key, cycle) DO NOTHING`,
         [uuidv4(), riveraId,
-         new Date(ADMIT_25_DAYS_AGO.getTime() + 30 * 86400000),
-         new Date(ADMIT_25_DAYS_AGO.getTime() + 21 * 86400000)]
+        new Date(ADMIT_25_DAYS_AGO.getTime() + 30 * 86400000),
+        new Date(ADMIT_25_DAYS_AGO.getTime() + 21 * 86400000)]
       );
       console.log("  ✓ Rivera tasks seeded");
     }
@@ -159,10 +168,10 @@ async function seed() {
          VALUES ($1,$2,'hp','H & P',0,$3,$4,'completed',$5,'j.garcia',$6,'dr.smith','H&P completed on admission.')
          ON CONFLICT (patient_id, task_key, cycle) DO NOTHING`,
         [uuidv4(), thompsonId,
-         new Date(ADMIT_2_DAYS_AGO.getTime() + 48 * 3600000),
-         ADMIT_2_DAYS_AGO,
-         new Date(ADMIT_2_DAYS_AGO.getTime() + 3600000),
-         new Date(ADMIT_2_DAYS_AGO.getTime() + 86400000)]
+        new Date(ADMIT_2_DAYS_AGO.getTime() + 48 * 3600000),
+          ADMIT_2_DAYS_AGO,
+        new Date(ADMIT_2_DAYS_AGO.getTime() + 3600000),
+        new Date(ADMIT_2_DAYS_AGO.getTime() + 86400000)]
       );
       console.log("  ✓ Thompson tasks seeded");
     }
@@ -175,9 +184,9 @@ async function seed() {
          VALUES ($1,$2,'hp','H & P',0,$3,$4,'pending',$5,'j.garcia','Please review isolation protocol.')
          ON CONFLICT (patient_id, task_key, cycle) DO NOTHING`,
         [uuidv4(), garciaId,
-         new Date(ADMIT_3_DAYS_AGO.getTime() + 48 * 3600000),
-         ADMIT_3_DAYS_AGO,
-         new Date(ADMIT_3_DAYS_AGO.getTime() + 3600000)]
+        new Date(ADMIT_3_DAYS_AGO.getTime() + 48 * 3600000),
+          ADMIT_3_DAYS_AGO,
+        new Date(ADMIT_3_DAYS_AGO.getTime() + 3600000)]
       );
       console.log("  ✓ Garcia tasks seeded");
     }

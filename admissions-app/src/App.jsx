@@ -657,17 +657,15 @@ export default function App() {
     setAdmissions(adm);
     setTaskState(ts);
   };
+  // Boot-time auth check. Runs ONCE on mount.
+  // After this, session loading is owned exclusively by handleLogin /
+  // handleInviteRegistered, so state changes (e.g. setInviteToken(null)
+  // after registration) don't retrigger duplicate API calls.
   useEffect(() => {
     let cancelled = false;
 
     (async () => {
       if (inviteToken) {
-        setBooting(false);
-        return;
-      }
-
-      // ✅ CRITICAL: prevent re-loading if we already have a user
-      if (user) {
         setBooting(false);
         return;
       }
@@ -695,7 +693,8 @@ export default function App() {
     })();
 
     return () => { cancelled = true; };
-  }, [inviteToken, user]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function handleLogin(u) {
     await loadSession(u);
@@ -704,7 +703,7 @@ export default function App() {
   async function handleInviteRegistered(u) {
     window.history.replaceState({}, "", window.location.pathname);
     setInviteToken(null);
-    setUser(u); // set user immediately for UI
+    await loadSession(u);
   }
 
   async function handleSignOut() {
