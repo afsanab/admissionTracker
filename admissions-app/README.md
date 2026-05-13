@@ -8,10 +8,10 @@ CareTrack is a HIPAA-aware clinical workflow tool designed to streamline patient
 
 | Layer | Technology |
 |---|---|
-| Framework | React 18 (functional components, hooks) |
+| Framework | React 19 (functional components, hooks) |
 | Language | JavaScript (JSX) |
-| Styling | Inline styles (no external CSS framework) |
-| State Management | React `useState` |
+| Styling | Inline styles plus `App.css` for responsive layout and modal/auth shells |
+| State Management | React `useState` / `useCallback` |
 | Rendering | Client-side only (single-page application) |
 | Hosting | Deployable as a static React app (Vite, Create React App, or similar) |
 | Future Backend | Node.js / Express + HIPAA-compliant database (e.g. AWS RDS on GovCloud) |

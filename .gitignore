@@ -2,6 +2,10 @@
 .DS_Store
 Thumbs.db
 
+# If you add a root workspace or scripts later
+node_modules/
+*.log
+
 # Secrets at repo root (if you add tooling here)
 .env
 .env.*

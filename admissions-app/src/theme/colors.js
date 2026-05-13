@@ -1,0 +1,20 @@
+/** CareTrack palette — shared across components */
+export const C = {
+  bg: "#f0ede8",
+  surface: "#faf8f5",
+  border: "#d8d3cb",
+  text: "#1a1814",
+  muted: "#7a7570",
+  light: "#a8a39d",
+  blue: "#2d5fa0",
+  blueLight: "#eef3fb",
+  green: "#2a8a50",
+  greenLight: "#edf7f1",
+  greenBorder: "#7dcb9a",
+  yellow: "#e8a020",
+  yellowLight: "#fef9ec",
+  yellowBorder: "#f5d27a",
+  red: "#c0392b",
+  redLight: "#fdf0ee",
+  navy: "#1a2540",
+};

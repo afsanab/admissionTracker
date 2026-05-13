@@ -1,3 +1,54 @@
+/* ── Labels (paired with inputs via htmlFor) ── */
+.ct-label {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #7a7570;
+  margin-bottom: 6px;
+}
+
+/* ── App-level error banner (replaces window.alert) ── */
+.ct-error-banner {
+  position: sticky;
+  top: 56px;
+  z-index: 90;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 16px;
+  margin: 0 auto;
+  max-width: 1200px;
+  background: #fdf0ee;
+  border-bottom: 1.5px solid #c0392b;
+  color: #1a1814;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.ct-error-banner button {
+  flex-shrink: 0;
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: 1px solid #c0392b;
+  background: #fff;
+  color: #c0392b;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+@media (max-width: 600px) {
+  .ct-error-banner {
+    top: 52px;
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
 /* ── Responsive utility classes ──
    Inline styles drive most of the visual look in App.jsx. These classes
    handle ONLY the parts that need media queries — layout containers that

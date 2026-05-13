@@ -11,6 +11,10 @@ node_modules
 dist
 dist-ssr
 
+# Vitest / tooling
+coverage/
+.eslintcache
+
 # Env & local overrides (Vite: .env, .env.local, .env.[mode].local)
 .env
 .env.*
