@@ -1,63 +1,56 @@
 const { Pool } = require("pg");
+const env = require("../config");
 
-// Prefer DATABASE_URL (single connection string, e.g. Supabase/Azure/Render);
-// fall back to discrete DB_* vars for local/dev setups.
-const connectionString = process.env.DATABASE_URL;
+function buildSslConfig() {
+  // DATABASE_URL path: providers like Supabase/Azure use a public TLS chain.
+  // Default to strict verification; allow opting into the relaxed mode for
+  // local/dev or providers whose CA you can't easily ship.
+  if (env.DATABASE_URL) {
+    return { rejectUnauthorized: env.DB_SSL_STRICT === "true" };
+  }
+  // Discrete DB_* path: only enable SSL if DB_SSL=true.
+  if (env.DB_SSL !== "true") return false;
+  return { rejectUnauthorized: env.DB_SSL_STRICT !== "false" };
+}
 
-const pool = new Pool(
-  connectionString
-    ? {
-        connectionString,
-        // Managed Postgres providers (Supabase, Azure, etc.) require TLS.
-        // rejectUnauthorized:false avoids needing to ship the provider CA.
-        ssl: { rejectUnauthorized: false },
-        max: 20,
-        idleTimeoutMillis: 30000,
-        connectionTimeoutMillis: 5000,
-        family: 4,
-      }
-    : {
-        host: process.env.DB_HOST,
-        port: parseInt(process.env.DB_PORT || "5432"),
-        database: process.env.DB_NAME,
-        user: process.env.DB_USER,
-        password: process.env.DB_PASSWORD,
-        ssl: process.env.DB_SSL === "true" ? { rejectUnauthorized: true } : false,
-        max: 20,
-        idleTimeoutMillis: 30000,
-        connectionTimeoutMillis: 5000,
-        family: 4,
-      }
-);
+const baseConfig = env.DATABASE_URL
+  ? { connectionString: env.DATABASE_URL }
+  : {
+      host: env.DB_HOST,
+      port: env.DB_PORT || 5432,
+      database: env.DB_NAME,
+      user: env.DB_USER,
+      password: env.DB_PASSWORD,
+    };
+
+const pool = new Pool({
+  ...baseConfig,
+  ssl: buildSslConfig(),
+  max: 20,
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 5000,
+  family: 4,
+});
 
 pool.on("error", (err) => {
   console.error("Unexpected PostgreSQL pool error:", err);
 });
 
-/**
- * Execute a query with automatic client release.
- * @param {string} text - SQL query string
- * @param {Array}  params - Query parameters
- */
 async function query(text, params) {
   const start = Date.now();
   try {
     const res = await pool.query(text, params);
-    const duration = Date.now() - start;
-    if (process.env.NODE_ENV === "development") {
+    if (env.NODE_ENV === "development") {
+      const duration = Date.now() - start;
       console.log(`[DB] ${duration}ms | rows: ${res.rowCount} | ${text.slice(0, 80)}`);
     }
     return res;
   } catch (err) {
-    console.error("[DB ERROR]", { text, params, error: err.message });
+    console.error("[DB ERROR]", { text: text.slice(0, 200), error: err.message });
     throw err;
   }
 }
 
-/**
- * Run a function inside a transaction.
- * Automatically commits on success, rolls back on error.
- */
 async function withTransaction(fn) {
   const client = await pool.connect();
   try {
@@ -73,4 +66,13 @@ async function withTransaction(fn) {
   }
 }
 
-module.exports = { pool, query, withTransaction };
+async function ping() {
+  const res = await pool.query("SELECT 1 AS ok");
+  return res.rows[0]?.ok === 1;
+}
+
+async function shutdown() {
+  await pool.end();
+}
+
+module.exports = { pool, query, withTransaction, ping, shutdown };
