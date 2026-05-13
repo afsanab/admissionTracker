@@ -1,4 +1,4 @@
-import { useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { invitations } from "../api.js";
 import Label from "./Label.jsx";
 import ModalShell from "./ModalShell.jsx";
@@ -19,6 +19,8 @@ export default function InviteStaffModal({ onClose, onCreated }) {
   const [result, setResult] = useState(null);
   const [copyState, setCopyState] = useState("idle");
   const copyResetRef = useRef(null);
+
+  useEffect(() => () => copyResetRef.current && clearTimeout(copyResetRef.current), []);
 
   async function copyInviteLink(url) {
     try {
@@ -100,7 +102,49 @@ export default function InviteStaffModal({ onClose, onCreated }) {
             )}
             {result.emailNote && <p style={{ fontSize: 12, color: C.yellow, marginBottom: 10 }}>{result.emailNote}</p>}
             <Label htmlFor={inviteLinkFieldId}>Invite link (copy if needed)</Label>
-            <input id={inviteLinkFieldId} readOnly value={result.inviteUrl} style={{ ...iStyle, fontSize: 12, marginBottom: 12 }} onFocus={(e) => e.target.select()} />
+            <div style={{ display: "flex", gap: 8, alignItems: "stretch", marginBottom: 12 }}>
+              <input
+                id={inviteLinkFieldId}
+                readOnly
+                value={result.inviteUrl}
+                style={{ ...iStyle, flex: 1, minWidth: 0, fontSize: 12, marginBottom: 0 }}
+                onFocus={(e) => e.target.select()}
+              />
+              <button
+                type="button"
+                onClick={() => copyInviteLink(result.inviteUrl)}
+                style={{
+                  flexShrink: 0,
+                  padding: "0 14px",
+                  borderRadius: 8,
+                  border: `1.5px solid ${C.border}`,
+                  background: copyState === "copied" ? C.greenLight : C.surface,
+                  color: copyState === "copied" ? C.green : C.text,
+                  fontFamily: "inherit",
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                {copyState === "copied" ? "Copied" : copyState === "error" ? "Copy failed" : "Copy link"}
+              </button>
+            </div>
+            <p
+              aria-live="polite"
+              style={{
+                position: "absolute",
+                width: 1,
+                height: 1,
+                padding: 0,
+                margin: -1,
+                overflow: "hidden",
+                clip: "rect(0, 0, 0, 0)",
+                whiteSpace: "nowrap",
+                border: 0,
+              }}
+            >
+              {copyState === "copied" ? "Invite link copied to clipboard." : copyState === "error" ? "Could not copy automatically. Select the link field and copy manually." : ""}
+            </p>
             <p style={{ fontSize: 11, color: C.light }}>
               Share this link only over secure channels. It expires on {new Date(result.invitation.expires_at).toLocaleString()}.
             </p>
