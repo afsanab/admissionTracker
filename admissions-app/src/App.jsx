@@ -1,8 +1,6 @@
 ﻿import { useCallback, useEffect, useState } from "react";
 import "./App.css";
 import {
-  getStoredToken,
-  setStoredToken,
   loadPatientsAndTasks,
   patientRowToAdmission,
   admissionToApiBody,
@@ -19,9 +17,13 @@ import AcceptInviteScreen from "./components/AcceptInviteScreen.jsx";
 import AdmissionCard from "./components/AdmissionCard.jsx";
 import AdmissionModal from "./components/AdmissionModal.jsx";
 import AuthScreen from "./components/AuthScreen.jsx";
+import ChangePasswordModal from "./components/ChangePasswordModal.jsx";
+import ConfirmDialog from "./components/ConfirmDialog.jsx";
 import DischargeDialog from "./components/DischargeDialog.jsx";
+import IdleTimeoutDialog from "./components/IdleTimeoutDialog.jsx";
 import InviteStaffModal from "./components/InviteStaffModal.jsx";
 import TaskPanel from "./components/TaskPanel.jsx";
+import useIdleTimeout from "./hooks/useIdleTimeout.js";
 
 export default function App() {
   const [user, setUser] = useState(null);
@@ -34,12 +36,16 @@ export default function App() {
   const [modal, setModal] = useState(null);
   const [tasksId, setTasksId] = useState(null);
   const [dischargeId, setDischargeId] = useState(null);
+  const [deletePendingId, setDeletePendingId] = useState(null);
   const [booting, setBooting] = useState(true);
   const [inviteToken, setInviteToken] = useState(() => new URLSearchParams(window.location.search).get("invite"));
   const [inviteModal, setInviteModal] = useState(false);
   const [bannerError, setBannerError] = useState(null);
   const [busyPatientId, setBusyPatientId] = useState(null);
   const [discharging, setDischarging] = useState(false);
+  const [deletingPending, setDeletingPending] = useState(false);
+  const [showPwModal, setShowPwModal] = useState(false);
+  const [pwForced, setPwForced] = useState(false);
 
   const reportError = useCallback((msg) => {
     const m = typeof msg === "string" && msg.trim() ? msg.trim() : "Something went wrong.";
@@ -51,11 +57,12 @@ export default function App() {
     setUser(u);
     setAdmissions(adm);
     setTaskState(ts);
+    if (u?.mustChangePassword) {
+      setPwForced(true);
+      setShowPwModal(true);
+    }
   };
-  // Boot-time auth check. Runs ONCE on mount.
-  // After this, session loading is owned exclusively by handleLogin /
-  // handleInviteRegistered, so state changes (e.g. setInviteToken(null)
-  // after registration) don't retrigger duplicate API calls.
+
   useEffect(() => {
     let cancelled = false;
 
@@ -64,31 +71,24 @@ export default function App() {
         setBooting(false);
         return;
       }
-
-      const token = getStoredToken();
-      if (!token) {
-        setBooting(false);
-        return;
-      }
-
       try {
         const { user: u } = await auth.me();
         if (cancelled) return;
-
         await loadSession({
           username: u.username,
           role: u.role,
           fullName: u.fullName,
+          mustChangePassword: u.mustChangePassword === true,
         });
       } catch {
-        setStoredToken(null);
+        // Not signed in (no session cookie / expired); show auth screen.
       } finally {
         if (!cancelled) setBooting(false);
       }
     })();
 
     return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- boot only; invite/register uses handleInviteRegistered/loadSession explicitly
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function handleLogin(u) {
@@ -101,18 +101,26 @@ export default function App() {
     await loadSession(u);
   }
 
-  async function handleSignOut() {
+  const handleSignOut = useCallback(async () => {
     try {
       await auth.logout();
     } catch {
       /* ignore */
     }
-    setStoredToken(null);
     setUser(null);
     setAdmissions([]);
     setTaskState({});
     setBannerError(null);
-  }
+    setShowPwModal(false);
+    setPwForced(false);
+  }, []);
+
+  const idle = useIdleTimeout({
+    enabled: Boolean(user),
+    idleMs: 25 * 60 * 1000,
+    graceMs: 5 * 60 * 1000,
+    onTimeout: handleSignOut,
+  });
 
   if (booting) {
     return (
@@ -129,11 +137,10 @@ export default function App() {
   if (!user) return <AuthScreen onLogin={handleLogin} />;
 
   const canEdit = user.role === "admin";
-  const canAdd = true; // both roles can add patients
+  const canAdd = true;
   const physicianList = [...new Set(admissions.map(a => a.physician).filter(Boolean))].sort();
   const locationList = [...new Set(admissions.map(a => a.location).filter(Boolean))].sort();
 
-  // Build merged tasks for each patient
   function getPatientTasks(admission) {
     if (!admission.admitTs || admission.status !== "inhouse") return null;
     const defs = getActiveTasks(admission.admitTs);
@@ -321,25 +328,27 @@ export default function App() {
     }
   }
 
-  async function deletePending(id) {
-    if (!window.confirm("Remove this admission?")) return;
+  async function confirmDeletePending(id) {
+    setDeletingPending(true);
     setBusyPatientId(id);
     try {
       await patientsApi.delete(id);
       setAdmissions((p) => p.filter((x) => x.id !== id));
+      setDeletePendingId(null);
     } catch (e) {
       reportError(e.message || "Could not remove admission.");
     } finally {
+      setDeletingPending(false);
       setBusyPatientId(null);
     }
   }
 
   const tasksAdmission = admissions.find(a => a.id === tasksId);
   const dischargeAdmission = admissions.find(a => a.id === dischargeId);
+  const deletePendingAdmission = admissions.find(a => a.id === deletePendingId);
 
   return (
     <div style={{ minHeight: "100vh", background: C.bg, fontFamily: "'DM Sans',system-ui,sans-serif", fontSize: 14 }}>
-      {/* Topbar */}
       <div className="ct-topbar">
         <div className="ct-topbar__brand">Care<em style={{ color: "#7aabf0" }}>Track</em></div>
         <div className="ct-topbar__actions">
@@ -348,6 +357,13 @@ export default function App() {
               Invite staff
             </button>
           )}
+          <button
+            type="button"
+            onClick={() => { setPwForced(false); setShowPwModal(true); }}
+            style={{ background: "rgba(255,255,255,0.1)", border: "1px solid rgba(255,255,255,0.2)", color: "rgba(255,255,255,0.85)", padding: "5px 12px", borderRadius: 6, fontFamily: "inherit", fontSize: 12, cursor: "pointer" }}
+          >
+            Change password
+          </button>
           <div className="ct-topbar__user">
             <div style={{ width: 30, height: 30, borderRadius: "50%", background: C.blue, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, flexShrink: 0 }} aria-hidden="true">{initials}</div>
             <span className="ct-topbar__user-name">{displayName}</span>
@@ -365,7 +381,6 @@ export default function App() {
       )}
 
       <div className="ct-page">
-        {/* Stats */}
         <div className="ct-stats">
           {[
             ["P", pendingCount, C.yellow, "Pending", "#fff3e0", "#7a4f08", () => { setFilter(filter === "pending" ? "all" : "pending"); setTaskFilter("all"); }],
@@ -390,7 +405,6 @@ export default function App() {
           })}
         </div>
 
-        {/* Toolbar */}
         <div className="ct-toolbar">
           <div className="ct-toolbar__filters">
             {[
@@ -415,7 +429,6 @@ export default function App() {
               </select>
             )}
           </div>
-          {/* Physician view: location dropdown */}
           {!canEdit && locationList.length > 0 && (
             <select value={locationFilter} aria-label={canEdit ? "Filter by location" : "Filter by facility"} onChange={e => setLocationFilter(e.target.value)}
               style={{ padding: "8px 14px", borderRadius: 20, border: `1.5px solid ${locationFilter !== "all" ? C.blue : C.border}`, background: locationFilter !== "all" ? C.blueLight : C.surface, color: locationFilter !== "all" ? C.blue : C.muted, fontFamily: "inherit", fontSize: 14, fontWeight: 600, cursor: "pointer", outline: "none", minHeight: 40, appearance: "none", paddingRight: 32, backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%237a7570' stroke-width='2.5'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E")`, backgroundRepeat: "no-repeat", backgroundPosition: "right 12px center", alignSelf: "flex-start" }}>
@@ -428,7 +441,6 @@ export default function App() {
           )}
         </div>
 
-        {/* Cards */}
         <div className="ct-cards">
           {filtered.length === 0
             ? <div className="ct-cards__empty">
@@ -439,7 +451,7 @@ export default function App() {
             : filtered.map(a => (
               <AdmissionCard key={a.id} admission={a} activeTasks={getPatientTasks(a)} canEdit={canEdit} patientBusy={busyPatientId === a.id}
                 onEdit={a => setModal({ type: "edit", admission: a })}
-                onDelete={deletePending}
+                onDelete={(id) => setDeletePendingId(id)}
                 onPromote={promoteToInhouse}
                 onDischarge={id => setDischargeId(id)}
                 onOpenTasks={id => setTasksId(id)}
@@ -449,7 +461,6 @@ export default function App() {
         </div>
       </div>
 
-      {/* Task panel */}
       {tasksId && tasksAdmission && (() => {
         const at = getPatientTasks(tasksAdmission);
         return at && (
@@ -458,18 +469,26 @@ export default function App() {
         );
       })()}
 
-      {/* Add/edit modal */}
       {modal && <AdmissionModal admission={modal.type === "edit" ? modal.admission : null} onSave={saveAdmission} onClose={() => setModal(null)} />}
 
-      {/* Discharge confirm */}
       {dischargeId && dischargeAdmission && (
         <DischargeDialog
           admission={dischargeAdmission}
           confirming={discharging}
-          onCancel={() => {
-            if (!discharging) setDischargeId(null);
-          }}
+          onCancel={() => { if (!discharging) setDischargeId(null); }}
           onConfirm={() => dischargePatient(dischargeId)}
+        />
+      )}
+
+      {deletePendingId && deletePendingAdmission && (
+        <ConfirmDialog
+          title="Remove this admission?"
+          message={`${deletePendingAdmission.last}, ${deletePendingAdmission.first} will be removed from the pending list.`}
+          confirmLabel="Remove"
+          destructive
+          busy={deletingPending}
+          onCancel={() => { if (!deletingPending) setDeletePendingId(null); }}
+          onConfirm={() => confirmDeletePending(deletePendingId)}
         />
       )}
 
@@ -479,7 +498,26 @@ export default function App() {
           onCreated={() => { }}
         />
       )}
+
+      {showPwModal && (
+        <ChangePasswordModal
+          forced={pwForced}
+          onClose={() => { if (!pwForced) setShowPwModal(false); }}
+          onDone={() => {
+            setShowPwModal(false);
+            setPwForced(false);
+            setUser((u) => (u ? { ...u, mustChangePassword: false } : u));
+          }}
+        />
+      )}
+
+      {idle.warning && (
+        <IdleTimeoutDialog
+          remainingMs={idle.remainingMs}
+          onStayActive={idle.stayActive}
+          onSignOut={handleSignOut}
+        />
+      )}
     </div>
   );
 }
-

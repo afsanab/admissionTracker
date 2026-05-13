@@ -1,39 +1,54 @@
 /**
- * CareTrack API — uses same-origin /api in dev (Vite proxy) or VITE_API_BASE in production.
+ * CareTrack API client.
+ *
+ * Auth: the backend issues an httpOnly session cookie on login/register, plus
+ * a non-httpOnly CSRF cookie that we echo back as the `X-CSRF-Token` header
+ * on every state-changing request (double-submit cookie pattern).
+ *
+ * No JWT is stored in JS land. Session lifetime is controlled by the
+ * server-set cookie expiration; `auth.me()` is used to detect whether the
+ * cookie is still valid on app boot.
  */
 import { getActiveTasks } from "./taskLogic.js";
 
-const STORAGE_KEY = "caretrack_token";
-
 const BASE = import.meta.env.VITE_API_BASE || "";
+const CSRF_COOKIE = "caretrack_csrf";
 
-export function getStoredToken() {
-  return sessionStorage.getItem(STORAGE_KEY);
-}
-
-export function setStoredToken(token) {
-  if (token) sessionStorage.setItem(STORAGE_KEY, token);
-  else sessionStorage.removeItem(STORAGE_KEY);
+function readCsrfCookie() {
+  const m = document.cookie.match(/(?:^|;\s*)caretrack_csrf=([^;]+)/);
+  return m ? decodeURIComponent(m[1]) : null;
 }
 
 async function request(method, path, body) {
   const headers = { "Content-Type": "application/json" };
-  const token = getStoredToken();
-  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const isUnsafe = !["GET", "HEAD", "OPTIONS"].includes(method);
+  if (isUnsafe) {
+    const csrf = readCsrfCookie();
+    if (csrf) headers["X-CSRF-Token"] = csrf;
+  }
 
   const res = await fetch(`${BASE}${path}`, {
     method,
     headers,
+    credentials: "include",
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
 
-  const data = await res.json().catch(() => ({}));
+  let data = null;
+  try {
+    data = await res.json();
+  } catch {
+    data = null;
+  }
+
   if (!res.ok) {
-    const err = new Error(data.error || `HTTP ${res.status}`);
+    const err = new Error(data?.error || `HTTP ${res.status}`);
     err.status = res.status;
+    err.issues = data?.issues;
+    err.retryAfterSec = data?.retryAfterSec;
     throw err;
   }
-  return data;
+  return data || {};
 }
 
 const get = (path) => request("GET", path);
@@ -167,7 +182,7 @@ export async function syncTaskRowsForPatient(patientId, admitTs) {
 }
 
 export async function loadPatientsAndTasks() {
-  const { patients: rows } = await patients.list();
+  const { patients: rows } = await patients.list({ pageSize: 100 });
   const adm = rows.map(patientRowToAdmission);
   const inhouse = rows.filter((p) => p.status === "inhouse" && p.admit_ts);
   const taskState = {};
@@ -179,3 +194,13 @@ export async function loadPatientsAndTasks() {
   );
   return { admissions: adm, taskState };
 }
+
+// Compat shims kept so any imports that haven't been updated yet don't crash.
+// These are no-ops because the JWT now lives in an httpOnly cookie.
+export function getStoredToken() {
+  return null;
+}
+export function setStoredToken() {
+  /* no-op: session cookie is server-managed */
+}
+export const CSRF_COOKIE_NAME = CSRF_COOKIE;

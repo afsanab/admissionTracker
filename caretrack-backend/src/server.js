@@ -1,71 +1,72 @@
-require("dotenv").config();
+const env = require("./config");
+
 const express = require("express");
 const helmet = require("helmet");
 const cors = require("cors");
 const morgan = require("morgan");
 const rateLimit = require("express-rate-limit");
+const cookieParser = require("cookie-parser");
 
 const routes = require("./routes");
 const { auditMiddleware } = require("./middleware/audit");
 const { errorHandler, notFound } = require("./middleware/errorHandler");
+const { shutdown: dbShutdown } = require("./db/pool");
+const { startScheduledJobs, stopScheduledJobs } = require("./services/scheduler");
 
 const app = express();
-const PORT = process.env.PORT || 3001;
 
-// Required when running behind a reverse proxy (Render, Railway, Fly, Vercel,
-// nginx, etc.) so req.ip and the rate-limiter see the real client IP from
-// X-Forwarded-For instead of the proxy's IP.
-if (process.env.NODE_ENV === "production") {
-  app.set("trust proxy", 1);
-}
+if (env.NODE_ENV === "production") app.set("trust proxy", 1);
 
-// ── Security headers (HIPAA: protect PHI in transit) ──
-app.use(helmet({
-  contentSecurityPolicy: {
-    directives: {
-      defaultSrc: ["'self'"],
-      scriptSrc: ["'self'"],
-      styleSrc: ["'self'", "'unsafe-inline'"],
-      imgSrc: ["'self'", "data:"],
+// ── Security headers ──────────────────────────────────
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'"],
+        styleSrc: ["'self'", "'unsafe-inline'"],
+        imgSrc: ["'self'", "data:"],
+        connectSrc: ["'self'"],
+      },
     },
-  },
-  hsts: {
-    maxAge: 31536000,        // 1 year
-    includeSubDomains: true,
-    preload: true,
-  },
-}));
+    crossOriginEmbedderPolicy: false,
+    hsts: {
+      maxAge: 31536000,
+      includeSubDomains: true,
+      preload: true,
+    },
+  })
+);
 
 // ── CORS ──────────────────────────────────────────────
-const allowedOrigins = (process.env.ALLOWED_ORIGINS || "http://localhost:5173")
-  .split(",")
-  .map(o => o.trim());
+app.use(
+  cors({
+    origin: (origin, cb) => {
+      if (!origin && env.NODE_ENV !== "production") return cb(null, true);
+      if (env.ALLOWED_ORIGINS_LIST.includes(origin)) return cb(null, true);
+      cb(new Error(`CORS: origin '${origin}' not allowed`));
+    },
+    methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization", "X-CSRF-Token"],
+    exposedHeaders: ["Retry-After"],
+    credentials: true,
+  })
+);
 
-app.use(cors({
-  origin: (origin, callback) => {
-    // Allow Postman / curl in dev (no origin header)
-    if (!origin && process.env.NODE_ENV !== "production") return callback(null, true);
-    if (allowedOrigins.includes(origin)) return callback(null, true);
-    callback(new Error(`CORS: origin '${origin}' not allowed`));
-  },
-  methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"],
-  credentials: true,
-}));
-
-// ── Rate limiting (HIPAA: prevent brute-force on PHI endpoints) ──
+// ── Rate limiting ─────────────────────────────────────
 const limiter = rateLimit({
-  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || "900000"),  // 15 min
-  max: parseInt(process.env.RATE_LIMIT_MAX || "100"),
+  windowMs: env.RATE_LIMIT_WINDOW_MS,
+  max: env.RATE_LIMIT_MAX,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: "Too many requests. Please try again later." },
 });
 
-// Stricter limit on auth endpoints
 const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,  // 15 min
+  windowMs: 15 * 60 * 1000,
   max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
   message: { error: "Too many login attempts. Please try again in 15 minutes." },
 });
 
@@ -74,43 +75,66 @@ app.use("/api/auth/register", authLimiter);
 app.use("/api/auth/invite-info", authLimiter);
 app.use("/api", limiter);
 
-// ── Body parsing ──────────────────────────────────────
+// ── Parsers ───────────────────────────────────────────
 app.use(express.json({ limit: "512kb" }));
 app.use(express.urlencoded({ extended: false }));
+app.use(cookieParser());
 
-// ── HTTP request logging ──────────────────────────────
-// In production, use a log format that doesn't log request bodies (PHI protection)
-app.use(morgan(process.env.NODE_ENV === "production" ? "combined" : "dev"));
+// ── Logging ───────────────────────────────────────────
+if (env.NODE_ENV !== "test") {
+  app.use(morgan(env.NODE_ENV === "production" ? "combined" : "dev"));
+}
 
-// ── Audit middleware ──────────────────────────────────
+// ── Audit ─────────────────────────────────────────────
 app.use(auditMiddleware);
 
-// ── Disable x-powered-by header ──────────────────────
 app.disable("x-powered-by");
 
 // ── Routes ────────────────────────────────────────────
 app.use("/api", routes);
-
-// ── 404 & error handlers ─────────────────────────────
 app.use(notFound);
 app.use(errorHandler);
 
-// ── Start ─────────────────────────────────────────────
-app.listen(PORT, () => {
-  console.log(`
+let server;
+let stopped = false;
+
+async function gracefulShutdown(signal) {
+  if (stopped) return;
+  stopped = true;
+  console.log(`\n${signal} received. Shutting down…`);
+  try {
+    stopScheduledJobs();
+  } catch (err) {
+    console.error("Scheduler shutdown error:", err.message);
+  }
+  if (server) {
+    await new Promise((resolve) => server.close(resolve));
+  }
+  try {
+    await dbShutdown();
+  } catch (err) {
+    console.error("DB shutdown error:", err.message);
+  }
+  process.exit(0);
+}
+
+if (require.main === module) {
+  server = app.listen(env.PORT, () => {
+    console.log(`
 ╔══════════════════════════════════════════════╗
 ║          CareTrack API Server                ║
-║  Port    : ${PORT}                               ║
-║  Env     : ${(process.env.NODE_ENV || "development").padEnd(34)}║
-║  DB Host : ${(process.env.DB_HOST || "localhost").slice(0, 33).padEnd(34)}║
+║  Port    : ${String(env.PORT).padEnd(34)}║
+║  Env     : ${env.NODE_ENV.padEnd(34)}║
 ╚══════════════════════════════════════════════╝
-  `);
-});
+`);
+  });
 
-// Graceful shutdown
-process.on("SIGTERM", () => {
-  console.log("SIGTERM received. Shutting down gracefully...");
-  process.exit(0);
-});
+  if (env.SCHEDULER_ENABLED === "true") {
+    startScheduledJobs();
+  }
+
+  process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
+  process.on("SIGINT", () => gracefulShutdown("SIGINT"));
+}
 
 module.exports = app;

@@ -1,5 +1,5 @@
 import { useEffect, useId, useState } from "react";
-import { auth, setStoredToken } from "../api.js";
+import { auth } from "../api.js";
 import Label from "./Label.jsx";
 import { C } from "../theme/colors.js";
 
@@ -53,13 +53,17 @@ export default function AcceptInviteScreen({ inviteToken, onRegistered }) {
     setError("");
     setLoading(true);
     try {
-      const { token: jwt, user: u } = await auth.register({
+      const { user: u } = await auth.register({
         token: inviteToken,
         password,
         fullName: fullName.trim() || undefined,
       });
-      setStoredToken(jwt);
-      await onRegistered({ username: u.username, role: u.role, fullName: u.fullName });
+      await onRegistered({
+        username: u.username,
+        role: u.role,
+        fullName: u.fullName,
+        mustChangePassword: u.mustChangePassword === true,
+      });
     } catch (e) {
       setError(e.message || "Registration failed.");
     } finally {

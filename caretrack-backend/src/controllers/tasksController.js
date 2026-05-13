@@ -1,22 +1,15 @@
 const { query } = require("../db/pool");
 const { v4: uuidv4 } = require("uuid");
 
-/**
- * GET /api/patients/:patientId/tasks
- * Returns all active tasks for a patient.
- */
 async function listTasks(req, res, next) {
   try {
     const { patientId } = req.params;
 
-    // Verify patient access
     const patient = await query(
-      "SELECT id, physician_username, status FROM patients WHERE id = $1 AND discharged_at IS NULL",
+      "SELECT id, physician_username FROM patients WHERE id = $1 AND discharged_at IS NULL",
       [patientId]
     );
-    if (!patient.rows[0]) {
-      return res.status(404).json({ error: "Patient not found." });
-    }
+    if (!patient.rows[0]) return res.status(404).json({ error: "Patient not found." });
     if (req.user.role === "physician" && patient.rows[0].physician_username !== req.user.username) {
       return res.status(403).json({ error: "Access denied." });
     }
@@ -34,33 +27,17 @@ async function listTasks(req, res, next) {
     );
 
     req.audit("LIST_TASKS", { patientId, count: result.rowCount });
-
     res.json({ tasks: result.rows });
   } catch (err) {
     next(err);
   }
 }
 
-/**
- * POST /api/patients/:patientId/tasks
- * Upsert a task for a patient (idempotent — based on task_key + cycle).
- * Called when the frontend computes that a task has become visible.
- * Admin only.
- */
 async function upsertTask(req, res, next) {
   try {
-    if (req.user.role !== "admin") {
-      return res.status(403).json({ error: "Only admissions staff can create tasks." });
-    }
-
     const { patientId } = req.params;
-    const { taskKey, taskLabel, cycle = 0, dueAt, appearsAt } = req.body;
+    const { taskKey, taskLabel, cycle, dueAt, appearsAt } = req.body;
 
-    if (!taskKey || !dueAt) {
-      return res.status(400).json({ error: "taskKey and dueAt are required." });
-    }
-
-    // Upsert: insert if not exists, ignore if already there (don't overwrite completed tasks)
     const result = await query(
       `INSERT INTO tasks (id, patient_id, task_key, task_label, cycle, due_at, appears_at, status)
        VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending')
@@ -69,7 +46,7 @@ async function upsertTask(req, res, next) {
              due_at = EXCLUDED.due_at,
              updated_at = NOW()
        RETURNING *`,
-      [uuidv4(), patientId, taskKey, taskLabel, cycle, dueAt, appearsAt || null]
+      [uuidv4(), patientId, taskKey, taskLabel, cycle, dueAt, appearsAt]
     );
 
     res.status(201).json({ task: result.rows[0] });
@@ -78,19 +55,10 @@ async function upsertTask(req, res, next) {
   }
 }
 
-/**
- * PATCH /api/patients/:patientId/tasks/:taskId/assign
- * Assign or unassign a task to the physician — admin only.
- * Body: { unassign: true } to remove assignment.
- */
 async function assignTask(req, res, next) {
   try {
-    if (req.user.role !== "admin") {
-      return res.status(403).json({ error: "Only admissions staff can assign tasks." });
-    }
-
     const { patientId, taskId } = req.params;
-    const { unassign = false, note } = req.body;
+    const { unassign, note } = req.body;
 
     const existing = await query(
       "SELECT * FROM tasks WHERE id = $1 AND patient_id = $2 AND status NOT IN ('completed','cancelled')",
@@ -111,7 +79,7 @@ async function assignTask(req, res, next) {
       [
         unassign ? null : new Date(),
         unassign ? null : req.user.username,
-        note || null,
+        note ?? null,
         taskId,
       ]
     );
@@ -127,16 +95,8 @@ async function assignTask(req, res, next) {
   }
 }
 
-/**
- * PATCH /api/patients/:patientId/tasks/:taskId/complete
- * Mark a task complete — physician only.
- */
 async function completeTask(req, res, next) {
   try {
-    if (req.user.role !== "physician") {
-      return res.status(403).json({ error: "Only physicians can complete tasks." });
-    }
-
     const { patientId, taskId } = req.params;
 
     const existing = await query(
@@ -151,13 +111,13 @@ async function completeTask(req, res, next) {
       return res.status(404).json({ error: "Task not found or already completed." });
     }
 
-    // Physicians can only complete tasks assigned to them
     if (existing.rows[0].physician_username !== req.user.username) {
       return res.status(403).json({ error: "Access denied." });
     }
-
     if (!existing.rows[0].assigned_at) {
-      return res.status(400).json({ error: "Task must be assigned before it can be marked complete." });
+      return res
+        .status(400)
+        .json({ error: "Task must be assigned before it can be marked complete." });
     }
 
     const result = await query(
@@ -182,16 +142,8 @@ async function completeTask(req, res, next) {
   }
 }
 
-/**
- * PATCH /api/patients/:patientId/tasks/:taskId/note
- * Update the task note — admin only.
- */
 async function updateTaskNote(req, res, next) {
   try {
-    if (req.user.role !== "admin") {
-      return res.status(403).json({ error: "Only admissions staff can update task notes." });
-    }
-
     const { patientId, taskId } = req.params;
     const { note } = req.body;
 
@@ -199,15 +151,12 @@ async function updateTaskNote(req, res, next) {
       `UPDATE tasks SET note = $1, updated_at = NOW()
        WHERE id = $2 AND patient_id = $3 AND status NOT IN ('cancelled')
        RETURNING *`,
-      [note || "", taskId, patientId]
+      [note, taskId, patientId]
     );
 
-    if (!result.rows[0]) {
-      return res.status(404).json({ error: "Task not found." });
-    }
+    if (!result.rows[0]) return res.status(404).json({ error: "Task not found." });
 
     req.audit("UPDATE_TASK_NOTE", { patientId, details: { taskId } });
-
     res.json({ task: result.rows[0] });
   } catch (err) {
     next(err);

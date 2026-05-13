@@ -1,5 +1,5 @@
 import { useId, useState } from "react";
-import { auth, setStoredToken } from "../api.js";
+import { auth } from "../api.js";
 import Label from "./Label.jsx";
 import { C } from "../theme/colors.js";
 
@@ -21,11 +21,19 @@ export default function AuthScreen({ onLogin }) {
     setError("");
     setLoading(true);
     try {
-      const { token, user: u } = await auth.login(username.trim(), password);
-      setStoredToken(token);
-      await onLogin({ username: u.username, role: u.role, fullName: u.fullName });
+      const { user: u } = await auth.login(username.trim(), password);
+      await onLogin({
+        username: u.username,
+        role: u.role,
+        fullName: u.fullName,
+        mustChangePassword: u.mustChangePassword === true,
+      });
     } catch (e) {
-      setError(e.message || "Sign in failed.");
+      if (e.status === 423) {
+        setError(e.message || "Account is temporarily locked. Try again later.");
+      } else {
+        setError(e.message || "Sign in failed.");
+      }
     } finally {
       setLoading(false);
     }
@@ -114,7 +122,7 @@ export default function AuthScreen({ onLogin }) {
             alignItems: "flex-start",
           }}
         >
-          <span aria-hidden="true">🔒</span>
+          <span aria-hidden="true">PHI</span>
           <span>This system contains Protected Health Information (PHI). Access is governed by HIPAA. Unauthorized use is prohibited.</span>
         </div>
       </div>

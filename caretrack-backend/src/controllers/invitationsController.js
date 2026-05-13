@@ -1,4 +1,5 @@
 const crypto = require("crypto");
+const env = require("../config");
 const { query } = require("../db/pool");
 const { sendInvitationEmail } = require("../services/inviteEmail");
 
@@ -7,34 +8,16 @@ function hashToken(token) {
 }
 
 function defaultExpiresAt() {
-  const days = parseInt(process.env.INVITE_EXPIRES_DAYS || "7", 10);
   const d = new Date();
-  d.setDate(d.getDate() + days);
+  d.setDate(d.getDate() + env.INVITE_EXPIRES_DAYS);
   return d;
 }
 
-/**
- * POST /api/invitations — admin only
- * Body: { username, role, email? }
- * Returns the raw token once (for copying the invite link).
- */
 async function createInvitation(req, res, next) {
   try {
     const { username, role, email } = req.body;
 
-    if (!username || !role) {
-      return res.status(400).json({ error: "username and role are required." });
-    }
-    if (!["physician", "admin"].includes(role)) {
-      return res.status(400).json({ error: "Role must be 'physician' or 'admin'." });
-    }
-
-    const uname = username.trim().toLowerCase();
-    if (uname.length < 2) {
-      return res.status(400).json({ error: "Username must be at least 2 characters." });
-    }
-
-    const taken = await query("SELECT 1 FROM users WHERE username = $1", [uname]);
+    const taken = await query("SELECT 1 FROM users WHERE username = $1", [username]);
     if (taken.rows[0]) {
       return res.status(409).json({ error: "That username is already registered." });
     }
@@ -47,29 +30,26 @@ async function createInvitation(req, res, next) {
       `INSERT INTO invitations (username, role, token_hash, invited_by, email, expires_at)
        VALUES ($1, $2, $3, $4, $5, $6)
        RETURNING id, username, role, email, expires_at, created_at`,
-      [uname, role, tokenHash, req.user.id, email?.trim() || null, expiresAt]
+      [username, role, tokenHash, req.user.id, email ?? null, expiresAt]
     );
 
     const row = result.rows[0];
     const base =
-      process.env.APP_PUBLIC_URL?.replace(/\/$/, "") ||
+      env.APP_PUBLIC_URL?.replace(/\/$/, "") ||
       `${req.protocol}://${req.get("host")}`;
-    const invitePath = process.env.INVITE_PATH || "/?invite=";
-    const inviteUrl = `${base}${invitePath}${encodeURIComponent(token)}`;
+    const inviteUrl = `${base}${env.INVITE_PATH}${encodeURIComponent(token)}`;
 
-    req.audit("CREATE_INVITATION", { details: { invitationId: row.id, username: uname, role } });
+    req.audit("CREATE_INVITATION", {
+      details: { invitationId: row.id, username, role },
+    });
 
     let emailResult = { sent: false };
-    const inviteeEmail = email?.trim();
-    if (inviteeEmail) {
-      emailResult = await sendInvitationEmail({
-        to: inviteeEmail,
-        inviteUrl,
-        username: uname,
-        role,
-      });
+    if (email) {
+      emailResult = await sendInvitationEmail({ to: email, inviteUrl, username, role });
       if (emailResult.sent) {
-        req.audit("INVITE_EMAIL_SENT", { details: { to: inviteeEmail, invitationId: row.id } });
+        req.audit("INVITE_EMAIL_SENT", {
+          details: { to: email, invitationId: row.id },
+        });
       }
     }
 
@@ -77,27 +57,26 @@ async function createInvitation(req, res, next) {
       invitation: row,
       token,
       inviteUrl,
-      message: inviteeEmail && emailResult.sent
-        ? "Invitation created and emailed."
-        : inviteeEmail && !emailResult.sent
-          ? `Invitation created. Email was not sent: ${emailResult.skippedReason || "unknown"}. Copy the link below.`
-          : "Share this link once. It will not be shown again.",
-      emailSent: Boolean(inviteeEmail && emailResult.sent),
-      emailNote: inviteeEmail && !emailResult.sent ? emailResult.skippedReason : undefined,
+      message:
+        email && emailResult.sent
+          ? "Invitation created and emailed."
+          : email && !emailResult.sent
+            ? `Invitation created. Email was not sent: ${emailResult.skippedReason || "unknown"}. Copy the link below.`
+            : "Share this link once. It will not be shown again.",
+      emailSent: Boolean(email && emailResult.sent),
+      emailNote: email && !emailResult.sent ? emailResult.skippedReason : undefined,
     });
   } catch (err) {
     if (err.code === "23505") {
       return res.status(409).json({
-        error: "There is already a pending invitation for this username. Revoke it first or use a different username.",
+        error:
+          "There is already a pending invitation for this username. Revoke it first or use a different username.",
       });
     }
     next(err);
   }
 }
 
-/**
- * GET /api/invitations — admin only; pending invites
- */
 async function listInvitations(req, res, next) {
   try {
     const result = await query(
@@ -115,9 +94,6 @@ async function listInvitations(req, res, next) {
   }
 }
 
-/**
- * DELETE /api/invitations/:id — admin only
- */
 async function revokeInvitation(req, res, next) {
   try {
     const { id } = req.params;
@@ -135,17 +111,9 @@ async function revokeInvitation(req, res, next) {
   }
 }
 
-/**
- * GET /api/auth/invite-info?token= — public; validate token for signup form
- */
 async function inviteInfo(req, res, next) {
   try {
-    const token = req.query.token;
-    if (!token || typeof token !== "string") {
-      return res.status(400).json({ error: "token query parameter is required." });
-    }
-
-    const tokenHash = hashToken(token.trim());
+    const tokenHash = hashToken(req.query.token.trim());
     const result = await query(
       `SELECT username, role, email, expires_at
        FROM invitations
@@ -153,9 +121,7 @@ async function inviteInfo(req, res, next) {
       [tokenHash]
     );
     const inv = result.rows[0];
-    if (!inv) {
-      return res.status(404).json({ error: "Invalid or expired invitation." });
-    }
+    if (!inv) return res.status(404).json({ error: "Invalid or expired invitation." });
     if (new Date(inv.expires_at) <= new Date()) {
       return res.status(410).json({ error: "This invitation has expired." });
     }
