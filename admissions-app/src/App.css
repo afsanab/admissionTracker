@@ -1,42 +1,311 @@
-#root {
-  max-width: 1280px;
+/* ── Responsive utility classes ──
+   Inline styles drive most of the visual look in App.jsx. These classes
+   handle ONLY the parts that need media queries — layout containers that
+   reflow between phone, tablet, and desktop. */
+
+/* ── Top bar ── */
+.ct-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  background: #1a2540;
+  color: #fff;
+  padding: 10px 16px;
+  min-height: 56px;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.ct-topbar__brand {
+  font-family: Georgia, serif;
+  font-size: 20px;
+  flex-shrink: 0;
+}
+
+.ct-topbar__actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  min-width: 0;
+}
+
+.ct-topbar__user {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.8);
+  min-width: 0;
+}
+
+.ct-topbar__user-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 180px;
+}
+
+.ct-topbar__role {
+  font-size: 11px;
+  opacity: 0.6;
+  white-space: nowrap;
+}
+
+@media (max-width: 600px) {
+  .ct-topbar {
+    padding: 8px 12px;
+    gap: 8px;
+  }
+  .ct-topbar__brand {
+    font-size: 18px;
+  }
+  .ct-topbar__role {
+    display: none;
+  }
+  .ct-topbar__user-name {
+    max-width: 110px;
+    font-size: 12px;
+  }
+}
+
+@media (max-width: 380px) {
+  .ct-topbar__user-name {
+    display: none;
+  }
+}
+
+/* ── Page container ── */
+.ct-page {
+  width: 100%;
+  max-width: 1200px;
   margin: 0 auto;
-  padding: 2rem;
+  padding: 20px 16px;
+}
+
+@media (max-width: 600px) {
+  .ct-page {
+    padding: 14px 10px;
+  }
+}
+
+/* ── Stats grid ── */
+.ct-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.ct-stats__card {
+  flex: 1 1 calc(25% - 9px);
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 18px;
+  border-radius: 12px;
+  text-align: left;
+  font-family: inherit;
+  transition: border-color 0.15s;
+}
+
+@media (max-width: 800px) {
+  .ct-stats__card {
+    flex: 1 1 calc(50% - 6px);
+  }
+}
+
+@media (max-width: 380px) {
+  .ct-stats {
+    gap: 8px;
+  }
+  .ct-stats__card {
+    flex: 1 1 100%;
+    padding: 14px 16px;
+  }
+}
+
+/* ── Toolbar ── */
+.ct-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.ct-toolbar__filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.ct-toolbar__filters > select {
+  flex: 0 1 auto;
+  min-width: 160px;
+}
+
+@media (max-width: 600px) {
+  .ct-toolbar__filters > select {
+    flex: 1 1 100%;
+  }
+}
+
+/* ── Card grid ── */
+.ct-cards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.ct-cards > * {
+  flex: 1 1 320px;
+  min-width: 0;
+  max-width: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.ct-cards__empty {
+  flex: 1 1 100%;
   text-align: center;
+  padding: 60px 24px;
+  color: #7a7570;
 }
 
-.logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-  transition: filter 300ms;
-}
-.logo:hover {
-  filter: drop-shadow(0 0 2em #646cffaa);
-}
-.logo.react:hover {
-  filter: drop-shadow(0 0 2em #61dafbaa);
-}
-
-@keyframes logo-spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
+@media (max-width: 480px) {
+  .ct-cards {
+    gap: 12px;
   }
 }
 
-@media (prefers-reduced-motion: no-preference) {
-  a:nth-of-type(2) .logo {
-    animation: logo-spin infinite 20s linear;
+/* ── Admission card inner info (was a CSS grid) ── */
+.ct-card-info {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  margin-bottom: 10px;
+}
+
+.ct-card-info__cell {
+  flex: 1 1 calc(50% - 7px);
+  min-width: 0;
+}
+
+.ct-card-info__cell--full {
+  flex: 1 1 100%;
+}
+
+/* ── Modals ── */
+.ct-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  background: rgba(10, 15, 30, 0.55);
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  overflow-y: auto;
+}
+
+.ct-modal-overlay--dark {
+  background: rgba(10, 15, 30, 0.65);
+  -webkit-backdrop-filter: blur(5px);
+  backdrop-filter: blur(5px);
+}
+
+@media (max-width: 600px) {
+  .ct-modal-overlay {
+    padding: 8px;
+    align-items: flex-start;
   }
 }
 
-.card {
-  padding: 2em;
+.ct-modal {
+  background: #faf8f5;
+  border-radius: 16px;
+  width: 100%;
+  max-width: 500px;
+  max-height: calc(100vh - 32px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.2);
 }
 
-.read-the-docs {
-  color: #888;
+.ct-modal--wide {
+  max-width: 520px;
+  border-radius: 20px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+}
+
+.ct-modal--narrow {
+  max-width: 420px;
+}
+
+.ct-modal__body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+@media (max-width: 600px) {
+  .ct-modal {
+    border-radius: 14px;
+    max-height: calc(100vh - 16px);
+  }
+}
+
+/* ── Auth screen ── */
+.ct-auth-bg {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: linear-gradient(145deg, #1a2540, #243258, #1e3a5f);
+}
+
+.ct-auth-card {
+  background: #faf8f5;
+  border-radius: 20px;
+  padding: 40px 36px;
+  width: 100%;
+  max-width: 420px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
+}
+
+@media (max-width: 600px) {
+  .ct-auth-bg {
+    padding: 16px;
+  }
+  .ct-auth-card {
+    padding: 28px 22px;
+    border-radius: 14px;
+  }
+}
+
+/* ── Task panel header rows ── */
+.ct-task-tabs {
+  display: flex;
+  min-width: max-content;
+}
+
+/* ── Footer button row in cards ── */
+.ct-card-footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 12px 12px;
+  border-top: 1px solid #d8d3cb;
+  background: #f7f4f0;
 }

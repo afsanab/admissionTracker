@@ -19,6 +19,52 @@ CareTrack is a HIPAA-aware clinical workflow tool designed to streamline patient
 
 ---
 
+## Run locally
+
+The UI calls the CareTrack API. With `npm run dev`, Vite proxies requests from `/api` to `http://localhost:3001`, so run the backend and this app at the same time for full functionality.
+
+**Prerequisites:** Node.js 18 or newer, and PostgreSQL if you are running the API against a local database.
+
+### 1. Backend (API + database)
+
+From the repository root:
+
+```bash
+cd caretrack-backend
+npm install
+cp .env.example .env
+```
+
+On Windows PowerShell, use `Copy-Item .env.example .env` instead of `cp`.
+
+Edit `.env`: set `JWT_SECRET`, configure the database (`DATABASE_URL` or the individual `DB_*` variables from `.env.example`), and include `http://localhost:5173` in `ALLOWED_ORIGINS`. Create an empty database, then migrate and (optionally) load demo data:
+
+```bash
+npm run migrate
+npm run seed
+npm run dev
+```
+
+The API serves **http://localhost:3001** under `/api`. Step-by-step PostgreSQL setup, demo logins after `npm run seed`, and troubleshooting are in [`caretrack-backend/README.md`](../caretrack-backend/README.md).
+
+### 2. Frontend
+
+From the repository root, in a second terminal:
+
+```bash
+cd admissions-app
+npm install
+npm run dev
+```
+
+Open **http://localhost:5173** in your browser.
+
+### Production build / custom API URL
+
+For a build that talks to an API without the dev proxy, set `VITE_API_BASE` to the API origin (for example `https://api.example.com`, no trailing slash) before running `npm run build`. Use `npm run preview` to serve the production build locally.
+
+---
+
 ## End Users
 
 **Admissions Staff**

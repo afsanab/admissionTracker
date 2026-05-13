@@ -12,6 +12,13 @@ const { errorHandler, notFound } = require("./middleware/errorHandler");
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+// Required when running behind a reverse proxy (Render, Railway, Fly, Vercel,
+// nginx, etc.) so req.ip and the rate-limiter see the real client IP from
+// X-Forwarded-For instead of the proxy's IP.
+if (process.env.NODE_ENV === "production") {
+  app.set("trust proxy", 1);
+}
+
 // ── Security headers (HIPAA: protect PHI in transit) ──
 app.use(helmet({
   contentSecurityPolicy: {

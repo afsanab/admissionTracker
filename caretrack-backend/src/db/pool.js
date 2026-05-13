@@ -1,17 +1,34 @@
 const { Pool } = require("pg");
 
-const pool = new Pool({
-  host: process.env.DB_HOST,
-  port: parseInt(process.env.DB_PORT || "5432"),
-  database: process.env.DB_NAME,
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
-  ssl: process.env.DB_SSL === "true" ? { rejectUnauthorized: true } : false,
-  max: 20,
-  idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 5000,
-  family: 4,
-});
+// Prefer DATABASE_URL (single connection string, e.g. Supabase/Azure/Render);
+// fall back to discrete DB_* vars for local/dev setups.
+const connectionString = process.env.DATABASE_URL;
+
+const pool = new Pool(
+  connectionString
+    ? {
+        connectionString,
+        // Managed Postgres providers (Supabase, Azure, etc.) require TLS.
+        // rejectUnauthorized:false avoids needing to ship the provider CA.
+        ssl: { rejectUnauthorized: false },
+        max: 20,
+        idleTimeoutMillis: 30000,
+        connectionTimeoutMillis: 5000,
+        family: 4,
+      }
+    : {
+        host: process.env.DB_HOST,
+        port: parseInt(process.env.DB_PORT || "5432"),
+        database: process.env.DB_NAME,
+        user: process.env.DB_USER,
+        password: process.env.DB_PASSWORD,
+        ssl: process.env.DB_SSL === "true" ? { rejectUnauthorized: true } : false,
+        max: 20,
+        idleTimeoutMillis: 30000,
+        connectionTimeoutMillis: 5000,
+        family: 4,
+      }
+);
 
 pool.on("error", (err) => {
   console.error("Unexpected PostgreSQL pool error:", err);

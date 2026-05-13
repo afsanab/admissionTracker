@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import "./App.css";
 import {
   getStoredToken,
   setStoredToken,
@@ -80,8 +81,8 @@ function AuthScreen({ onLogin }) {
   const iStyle = { width: "100%", padding: "11px 14px", border: `1.5px solid ${C.border}`, borderRadius: 8, fontFamily: "inherit", fontSize: 14, background: C.bg, outline: "none", boxSizing: "border-box" };
 
   return (
-    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "linear-gradient(145deg,#1a2540,#243258,#1e3a5f)", padding: 24 }}>
-      <div style={{ background: C.surface, borderRadius: 20, padding: "40px 36px", width: "100%", maxWidth: 420, boxShadow: "0 12px 40px rgba(0,0,0,0.3)" }}>
+    <div className="ct-auth-bg">
+      <div className="ct-auth-card">
         <div style={{ fontFamily: "Georgia,serif", fontSize: 28, color: C.blue, marginBottom: 4 }}>Care<em>Track</em></div>
         <div style={{ color: C.muted, fontSize: 13, marginBottom: 8 }}>Nursing Home Admissions Portal</div>
         <div style={{ color: C.light, fontSize: 12, marginBottom: 24, lineHeight: 1.5 }}>
@@ -175,7 +176,7 @@ function AcceptInviteScreen({ token, onRegistered }) {
 
   if (loading && !info && !error) {
     return (
-      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "linear-gradient(145deg,#1a2540,#243258,#1e3a5f)" }}>
+      <div className="ct-auth-bg">
         <div style={{ color: "#fff", fontSize: 14 }}>Checking invitation…</div>
       </div>
     );
@@ -183,8 +184,8 @@ function AcceptInviteScreen({ token, onRegistered }) {
 
   if (!info && error) {
     return (
-      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "linear-gradient(145deg,#1a2540,#243258,#1e3a5f)", padding: 24 }}>
-        <div style={{ background: C.surface, borderRadius: 20, padding: "32px 28px", maxWidth: 400, textAlign: "center" }}>
+      <div className="ct-auth-bg">
+        <div className="ct-auth-card" style={{ maxWidth: 400, padding: "32px 28px", textAlign: "center" }}>
           <div style={{ color: C.red, fontWeight: 700, marginBottom: 8 }}>Invitation unavailable</div>
           <div style={{ color: C.muted, fontSize: 14 }}>{error}</div>
         </div>
@@ -193,8 +194,8 @@ function AcceptInviteScreen({ token, onRegistered }) {
   }
 
   return (
-    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "linear-gradient(145deg,#1a2540,#243258,#1e3a5f)", padding: 24 }}>
-      <div style={{ background: C.surface, borderRadius: 20, padding: "40px 36px", width: "100%", maxWidth: 420, boxShadow: "0 12px 40px rgba(0,0,0,0.3)" }}>
+    <div className="ct-auth-bg">
+      <div className="ct-auth-card">
         <div style={{ fontFamily: "Georgia,serif", fontSize: 24, color: C.blue, marginBottom: 4 }}>Create your account</div>
         <div style={{ color: C.muted, fontSize: 13, marginBottom: 20 }}>
           Username <strong style={{ color: C.text }}>{info?.username}</strong>
@@ -250,13 +251,13 @@ function InviteStaffModal({ onClose, onCreated }) {
   const iStyle = { width: "100%", padding: "10px 12px", border: `1.5px solid ${C.border}`, borderRadius: 8, fontFamily: "inherit", fontSize: 13, background: C.bg, outline: "none", boxSizing: "border-box" };
 
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(10,15,30,0.55)", backdropFilter: "blur(3px)", zIndex: 400, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={onClose}>
-      <div style={{ background: C.surface, borderRadius: 16, width: "100%", maxWidth: 440, boxShadow: "0 12px 32px rgba(0,0,0,0.2)" }} onClick={e => e.stopPropagation()}>
-        <div style={{ padding: "16px 20px 14px", borderBottom: `1px solid ${C.border}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+    <div className="ct-modal-overlay" style={{ zIndex: 400 }} onClick={onClose}>
+      <div className="ct-modal" style={{ maxWidth: 440 }} onClick={e => e.stopPropagation()}>
+        <div style={{ padding: "16px 20px 14px", borderBottom: `1px solid ${C.border}`, display: "flex", justifyContent: "space-between", alignItems: "center", flexShrink: 0 }}>
           <div style={{ fontFamily: "Georgia,serif", fontSize: 20 }}>Invite staff</div>
           <button type="button" onClick={onClose} style={{ width: 32, height: 32, borderRadius: 7, border: `1px solid ${C.border}`, background: C.bg, cursor: "pointer", fontSize: 16, color: C.muted }}>✕</button>
         </div>
-        <div style={{ padding: "16px 20px 20px" }}>
+        <div className="ct-modal__body" style={{ padding: "16px 20px 20px" }}>
           {result ? (
             <>
               <p style={{ fontSize: 13, color: C.muted, marginBottom: 12 }}>{result.message}</p>
@@ -315,8 +316,8 @@ function TaskPanel({ admission, activeTasks, onClose, onAssign, onComplete, onUp
   const isDueSoon = daysUntilDue !== null && daysUntilDue >= 0 && daysUntilDue <= 3;
 
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(10,15,30,0.65)", backdropFilter: "blur(5px)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }} onClick={onClose}>
-      <div style={{ background: C.surface, borderRadius: 20, width: "100%", maxWidth: 520, boxShadow: "0 20px 60px rgba(0,0,0,0.3)", overflow: "hidden", maxHeight: "92vh", display: "flex", flexDirection: "column" }} onClick={e => e.stopPropagation()}>
+    <div className="ct-modal-overlay ct-modal-overlay--dark" onClick={onClose}>
+      <div className="ct-modal ct-modal--wide" onClick={e => e.stopPropagation()}>
 
         {/* Header */}
         <div style={{ background: C.navy, padding: "18px 22px", display: "flex", justifyContent: "space-between", alignItems: "center", flexShrink: 0 }}>
@@ -456,13 +457,13 @@ function AdmissionModal({ admission, onSave, onClose }) {
   }
 
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(10,15,30,0.55)", backdropFilter: "blur(3px)", zIndex: 200, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "16px 12px", overflowY: "auto" }} onClick={onClose}>
-      <div style={{ background: C.surface, borderRadius: 16, width: "100%", maxWidth: 500, boxShadow: "0 12px 32px rgba(0,0,0,0.2)", marginTop: "auto", marginBottom: "auto" }} onClick={e => e.stopPropagation()}>
-        <div style={{ padding: "16px 20px 14px", borderBottom: `1px solid ${C.border}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+    <div className="ct-modal-overlay" onClick={onClose}>
+      <div className="ct-modal" onClick={e => e.stopPropagation()}>
+        <div style={{ padding: "16px 20px 14px", borderBottom: `1px solid ${C.border}`, display: "flex", justifyContent: "space-between", alignItems: "center", flexShrink: 0 }}>
           <div style={{ fontFamily: "Georgia,serif", fontSize: 20 }}>{admission ? "Edit Admission" : "New Admission"}</div>
           <button onClick={onClose} style={{ width: 32, height: 32, borderRadius: 7, border: `1px solid ${C.border}`, background: C.bg, cursor: "pointer", fontSize: 16, color: C.muted }}>✕</button>
         </div>
-        <div style={{ padding: "16px 20px" }}>
+        <div className="ct-modal__body" style={{ padding: "16px 20px" }}>
           {/* Single-column layout for mobile friendliness */}
           {field("Last Name *", "last", "text", "Last name")}
           {field("First Name *", "first", "text", "First name")}
@@ -485,7 +486,7 @@ function AdmissionModal({ admission, onSave, onClose }) {
           </div>
           {err && <div style={{ color: C.red, fontSize: 12, marginBottom: 8 }}>{err}</div>}
         </div>
-        <div style={{ padding: "12px 20px 20px", borderTop: `1px solid ${C.border}`, display: "flex", gap: 10 }}>
+        <div style={{ padding: "12px 20px 20px", borderTop: `1px solid ${C.border}`, display: "flex", gap: 10, flexShrink: 0, background: C.surface }}>
           <button onClick={onClose} style={{ flex: 1, padding: "11px", border: `1.5px solid ${C.border}`, borderRadius: 8, background: C.surface, fontFamily: "inherit", fontSize: 14, fontWeight: 600, cursor: "pointer", color: C.muted }}>Cancel</button>
           <button onClick={save} style={{ flex: 2, padding: "11px", background: C.blue, color: "#fff", border: "none", borderRadius: 8, fontFamily: "inherit", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>Save Admission</button>
         </div>
@@ -579,28 +580,28 @@ function AdmissionCard({ admission, activeTasks, canEdit, onEdit, onDelete, onPr
       <div style={{ padding: "14px 16px", flex: 1 }}>
         <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 2 }}>{admission.last}, {admission.first}</div>
         <div style={{ fontSize: 12, color: C.muted, marginBottom: 12, fontFamily: "monospace" }}>{fmtAge(admission.dob)}</div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 10 }}>
+        <div className="ct-card-info">
           {[["Room", admission.room || "—"]].map(([l, v]) => (
-            <div key={l}>
+            <div key={l} className="ct-card-info__cell">
               <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: C.light, marginBottom: 2 }}>{l}</div>
-              <div style={{ fontSize: 13, fontWeight: 500 }}>{v}</div>
+              <div style={{ fontSize: 13, fontWeight: 500, wordBreak: "break-word" }}>{v}</div>
             </div>
           ))}
           {admission.location && (
-            <div>
+            <div className="ct-card-info__cell">
               <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: C.light, marginBottom: 2 }}>Facility</div>
-              <div style={{ fontSize: 13, fontWeight: 500 }}>{admission.location}</div>
+              <div style={{ fontSize: 13, fontWeight: 500, wordBreak: "break-word" }}>{admission.location}</div>
             </div>
           )}
           {admission.physician && (
-            <div style={{ gridColumn: "1/-1" }}>
+            <div className="ct-card-info__cell ct-card-info__cell--full">
               <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: C.light, marginBottom: 2 }}>Physician</div>
-              <div style={{ fontSize: 13, fontWeight: 500 }}>{formatPhysicianDisplay(admission.physician)}</div>
+              <div style={{ fontSize: 13, fontWeight: 500, wordBreak: "break-word" }}>{formatPhysicianDisplay(admission.physician)}</div>
             </div>
           )}
-          <div style={{ gridColumn: "1/-1" }}>
+          <div className="ct-card-info__cell ct-card-info__cell--full">
             <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: C.light, marginBottom: 2 }}>Diagnosis</div>
-            <div style={{ fontSize: 13, fontWeight: 500 }}>{admission.dx || "—"}</div>
+            <div style={{ fontSize: 13, fontWeight: 500, wordBreak: "break-word" }}>{admission.dx || "—"}</div>
           </div>
         </div>
         {admission.notes && (
@@ -720,7 +721,7 @@ export default function App() {
 
   if (booting) {
     return (
-      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: C.bg, fontFamily: "'DM Sans',system-ui,sans-serif" }}>
+      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: C.bg, fontFamily: "'DM Sans',system-ui,sans-serif", padding: 24 }}>
         <div style={{ color: C.muted, fontSize: 14 }}>Loading…</div>
       </div>
     );
@@ -911,25 +912,26 @@ export default function App() {
   return (
     <div style={{ minHeight: "100vh", background: C.bg, fontFamily: "'DM Sans',system-ui,sans-serif", fontSize: 14 }}>
       {/* Topbar */}
-      <div style={{ background: C.navy, color: "#fff", padding: "0 16px", height: 56, display: "flex", alignItems: "center", justifyContent: "space-between", position: "sticky", top: 0, zIndex: 100, boxShadow: "0 2px 8px rgba(0,0,0,0.3)" }}>
-        <div style={{ fontFamily: "Georgia,serif", fontSize: 20 }}>Care<em style={{ color: "#7aabf0" }}>Track</em></div>
-        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+      <div className="ct-topbar">
+        <div className="ct-topbar__brand">Care<em style={{ color: "#7aabf0" }}>Track</em></div>
+        <div className="ct-topbar__actions">
           {canEdit && (
             <button type="button" onClick={() => setInviteModal(true)} style={{ background: "rgba(255,255,255,0.12)", border: "1px solid rgba(255,255,255,0.25)", color: "#fff", padding: "6px 14px", borderRadius: 6, fontFamily: "inherit", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
               Invite staff
             </button>
           )}
-          <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "rgba(255,255,255,0.8)" }}>
-            <div style={{ width: 30, height: 30, borderRadius: "50%", background: C.blue, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700 }}>{initials}</div>
-            {displayName} <span style={{ fontSize: 11, opacity: 0.6 }}>({user.role === "physician" ? "Physician" : "Admissions"})</span>
+          <div className="ct-topbar__user">
+            <div style={{ width: 30, height: 30, borderRadius: "50%", background: C.blue, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, flexShrink: 0 }}>{initials}</div>
+            <span className="ct-topbar__user-name">{displayName}</span>
+            <span className="ct-topbar__role">({user.role === "physician" ? "Physician" : "Admissions"})</span>
           </div>
           <button type="button" onClick={handleSignOut} style={{ background: "rgba(255,255,255,0.1)", border: "1px solid rgba(255,255,255,0.2)", color: "rgba(255,255,255,0.7)", padding: "5px 12px", borderRadius: 6, fontFamily: "inherit", fontSize: 12, cursor: "pointer" }}>Sign Out</button>
         </div>
       </div>
 
-      <div style={{ maxWidth: 1100, margin: "0 auto", padding: "20px 16px" }}>
+      <div className="ct-page">
         {/* Stats */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 12, marginBottom: 24 }}>
+        <div className="ct-stats">
           {[
             ["P", pendingCount, C.yellow, "Pending", "#fff3e0", "#7a4f08", () => { setFilter(filter === "pending" ? "all" : "pending"); setTaskFilter("all"); }],
             ["H", inhouseCount, C.green, "In House", C.greenLight, "#14542e", () => { setFilter(filter === "inhouse" ? "all" : "inhouse"); setTaskFilter("all"); }],
@@ -942,11 +944,11 @@ export default function App() {
               (label === "Open Tasks" && taskFilter === "open") ||
               (label === "Overdue Tasks" && taskFilter === "overdue");
             return (
-              <button key={label} onClick={onClick} style={{ background: C.surface, borderRadius: 12, padding: "16px 18px", border: `2px solid ${isActive ? color : C.border}`, display: "flex", alignItems: "center", gap: 12, boxShadow: isActive ? `0 0 0 3px ${color}30` : num > 0 && label === "Overdue Tasks" ? `0 0 0 2px rgba(192,57,43,0.2)` : "none", cursor: "pointer", textAlign: "left", width: "100%", fontFamily: "inherit", transition: "border-color 0.15s" }}>
+              <button key={label} onClick={onClick} className="ct-stats__card" style={{ background: C.surface, border: `2px solid ${isActive ? color : C.border}`, boxShadow: isActive ? `0 0 0 3px ${color}30` : num > 0 && label === "Overdue Tasks" ? `0 0 0 2px rgba(192,57,43,0.2)` : "none", cursor: "pointer" }}>
                 <div style={{ width: 42, height: 42, borderRadius: 10, background: isActive ? color : bg, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, fontWeight: 900, color: isActive ? "#fff" : iconColor, flexShrink: 0 }}>{icon}</div>
-                <div>
+                <div style={{ minWidth: 0 }}>
                   <div style={{ fontSize: 24, fontWeight: 800, color, fontFamily: "monospace", lineHeight: 1 }}>{num}</div>
-                  <div style={{ fontSize: 11, color: isActive ? color : C.muted, fontWeight: isActive ? 700 : 600, marginTop: 2 }}>{label}</div>
+                  <div style={{ fontSize: 11, color: isActive ? color : C.muted, fontWeight: isActive ? 700 : 600, marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{label}</div>
                 </div>
               </button>
             );
@@ -954,8 +956,8 @@ export default function App() {
         </div>
 
         {/* Toolbar */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 16 }}>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+        <div className="ct-toolbar">
+          <div className="ct-toolbar__filters">
             {[
               ["all", "All", filter === "all" ? C.blue : C.border, filter === "all" ? C.blueLight : C.surface, filter === "all" ? C.blue : C.muted],
               ["pending", "Pending", filter === "pending" ? C.yellow : C.border, filter === "pending" ? C.yellowLight : C.surface, filter === "pending" ? "#7a4f08" : C.muted],
@@ -992,9 +994,9 @@ export default function App() {
         </div>
 
         {/* Cards */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 340px), 1fr))", gap: 16 }}>
+        <div className="ct-cards">
           {filtered.length === 0
-            ? <div style={{ gridColumn: "1/-1", textAlign: "center", padding: "60px 24px", color: C.muted }}>
+            ? <div className="ct-cards__empty">
               <div style={{ fontSize: 40, marginBottom: 12, opacity: 0.3, color: C.muted }}>+</div>
               <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 6, color: C.text }}>No admissions found</div>
               <div style={{ fontSize: 13 }}>Add a new admission using the button above.</div>
@@ -1026,8 +1028,8 @@ export default function App() {
 
       {/* Discharge confirm */}
       {dischargeId && dischargeAdmission && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(10,15,30,0.6)", backdropFilter: "blur(4px)", zIndex: 300, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
-          <div style={{ background: C.surface, borderRadius: 16, padding: "32px 28px", maxWidth: 380, width: "100%", boxShadow: "0 12px 40px rgba(0,0,0,0.25)", textAlign: "center" }}>
+        <div className="ct-modal-overlay ct-modal-overlay--dark" style={{ zIndex: 300 }}>
+          <div className="ct-modal ct-modal--narrow" style={{ maxWidth: 380, padding: "32px 28px", textAlign: "center" }}>
             <div style={{ fontSize: 40, marginBottom: 12, color: C.red, fontWeight: 900, lineHeight: 1 }}>DC</div>
             <div style={{ fontFamily: "Georgia,serif", fontSize: 20, marginBottom: 8 }}>Discharge Patient?</div>
             <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 8 }}>{dischargeAdmission.last}, {dischargeAdmission.first}</div>
