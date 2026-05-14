@@ -1,118 +1,128 @@
 # CareTrack — Nursing Home Admissions & Task Management
 
-CareTrack is a HIPAA-aware clinical workflow tool designed to streamline patient admissions tracking and physician task management across one or more skilled nursing facilities. It provides a unified view for both admissions staff and attending physicians, reducing communication gaps and ensuring time-sensitive clinical tasks don't fall through the cracks.
+CareTrack is a HIPAA-aware clinical workflow tool that streamlines patient
+admissions tracking and physician task management across one or more
+skilled nursing facilities. The current code is a full-stack application:
+a Node + Postgres backend (`caretrack-backend/`) and a React + Vite SPA
+(`admissions-app/`).
+
+> **Status:** functional end-to-end, with the security, audit, and
+> operational hardening required by HIPAA implemented in code. The remaining
+> production blockers are organizational (BAAs, risk analysis, infra
+> provisioning) and are tracked in [`PROD_READINESS.md`](./PROD_READINESS.md).
 
 ---
 
-## Tech Stack
+## Repo layout
 
-| Layer | Technology |
-|---|---|
-| Framework | React 18 (functional components, hooks) |
-| Language | JavaScript (JSX) |
-| Styling | Inline styles (no external CSS framework) |
-| State Management | React `useState` |
-| Rendering | Client-side only (single-page application) |
-| Hosting | Deployable as a static React app (Vite, Create React App, or similar) |
-| Future Backend | Node.js / Express + HIPAA-compliant database (e.g. AWS RDS on GovCloud) |
-| Future EHR Integration | PointClickCare FHIR API / MatrixCare API |
+```
+admissionTracker/
+├── admissions-app/        # React 19 + Vite SPA
+├── caretrack-backend/     # Node + Express + Postgres API
+├── .github/workflows/     # CI (lint + test + build + audit)
+└── README.md
+```
 
----
-
-## End Users
-
-**Admissions Staff**
-Administrative personnel at skilled nursing facilities who manage the patient census, handle intake paperwork, and coordinate with the attending physician. They are the primary data entry users and task assigners.
-
-**Attending Physicians**
-Physicians who cover one or more nursing home facilities. They use CareTrack to view their patient census across all facilities, receive assigned clinical tasks, and document task completion — all from a single unified view.
+Each package is independent. The frontend talks to the backend over `/api`
+(via Vite's dev proxy locally; via `VITE_API_BASE` in production builds).
 
 ---
 
-## Purpose
+## Quick start
 
-In skilled nursing facilities, clinical documentation tasks like History & Physicals, 30-day reviews, and 60-day reviews are regulatory requirements with strict deadlines. These tasks are typically coordinated informally via phone calls, sticky notes, or separate EHR systems that don't offer a simple at-a-glance workflow view.
+Prereqs: Node 18+, Postgres 15+ (or Supabase / any managed Postgres).
 
-CareTrack solves this by providing a lightweight, mobile-friendly interface where:
-- Admissions staff can track incoming and current patients across facilities
-- Physicians can see all their patients in one place, regardless of which facility they're at
-- Required clinical tasks are automatically generated, tracked, and flagged when overdue
+```bash
+# 1) Backend
+cd caretrack-backend
+npm install
+cp .env.example .env          # fill in DATABASE_URL + JWT_SECRET
+npm run migrate
+npm run seed                   # optional: demo users + patients
+npm run dev                    # http://localhost:3001
 
----
+# 2) Frontend (separate terminal)
+cd admissions-app
+npm install
+npm run dev                    # http://localhost:5173
+```
 
-## Functionality & Features
+Seed demo logins:
 
-### Authentication & Role-Based Access
-- Dual-role login: **Physician** and **Admissions Staff**
-- Role-specific views and permissions — admissions staff manage records, physicians manage task completion
-- Both roles can add new patient admissions
-
-### Patient Admission Management
-- Add, edit, and track patients with fields for name, DOB, room, diagnosis, attending physician, facility, clinical notes, and admission status
-- Two status states: **Pending** (expected arrival) and **In House** (admitted)
-- Admissions staff can promote a patient from Pending to In House, which automatically triggers clinical task creation
-- Admissions staff can **Discharge** a patient, removing them from the active census and cancelling any outstanding tasks
-
-### Automated Clinical Task System
-Tasks are automatically created when a patient is marked In House, based on regulatory timing requirements:
-
-| Task | Appears | Due |
-|---|---|---|
-| H & P | On admission | 48 hours after admit |
-| 30-Day Review | Day 21 | Day 30 |
-| 60-Day Review | Day 51 | Day 60, then repeats every 60 days |
-
-- Admissions staff **assign** tasks to the physician, optionally adding instructions or context
-- Physicians **mark tasks complete** from their view
-- Overdue tasks are prominently flagged with red indicators on cards and in the stats bar
-- Tasks are automatically cancelled upon patient discharge
-
-### Multi-Facility Support
-- Patients can be assigned to different nursing home facilities
-- Physicians see all their patients across all facilities in one unified list
-- Facility filter dropdown allows physicians to narrow to a specific location
-- Admissions staff can filter by both facility and physician
-
-### Filtering & Navigation
-- Filter patients by status (All / Pending / In House)
-- Filter by attending physician (admin view)
-- Filter by facility/location (both views)
-- Clickable stat cards (Pending, In House, Open Tasks, Overdue Tasks) instantly filter the patient list
-
-### Patient Cards
-Each patient card displays:
-- Name, DOB/age, room number, facility, attending physician, diagnosis, and clinical notes
-- Inline task status pills showing each task's state (unassigned, assigned, overdue, complete)
-- Color-coded card borders and headers reflecting urgency (green = stable, yellow = pending, red = overdue tasks)
-
-### Mobile-Responsive Design
-- Single-column layout optimized for iPhone and Android screens
-- Touch-friendly button sizing and form inputs
-- Full-width modals with scrollable forms for comfortable mobile data entry
+| Role      | Username | Password       |
+| --------- | -------- | -------------- |
+| Physician | dr.smith | CareTrack2026! |
+| Physician | dr.patel | CareTrack2026! |
+| Admin     | admin    | CareTrack2026! |
+| Admin     | j.garcia | CareTrack2026! |
 
 ---
 
-## HIPAA Considerations
+## Security model (what the code does today)
 
-This prototype runs entirely client-side and is intended as a design and workflow prototype only. A production deployment would require:
-
-- HIPAA-compliant backend and database (e.g. AWS GovCloud, Azure with HIPAA BAA)
-- Encryption at rest and in transit (TLS 1.2+)
-- Audit logging for all PHI access and modifications
-- Real authentication with session timeouts and MFA
-- Signed Business Associate Agreements (BAAs) with all vendors
-- Role-based access control enforced server-side
+- **Authentication:** httpOnly `caretrack_session` cookie carrying a signed
+  JWT; CSRF protected by a double-submit `caretrack_csrf` cookie / header.
+  No tokens stored in JS-accessible storage.
+- **Account lockout:** N failed logins inside a sliding window lock the
+  account for a configurable cooldown. Every attempt is logged.
+- **Forced password change:** admin-issued password resets flag the account
+  with `must_change_password`; the SPA prompts the user immediately.
+- **Audit log:** every PHI-touching action and every login attempt is
+  written to `audit_log` + `logs/audit.log`. In production, configuring
+  `AZURE_STORAGE_CONNECTION_STRING` enables append-only shipping to Azure
+  Blob Storage for immutable 7-year retention.
+- **Request validation:** every route validates inputs through `zod`
+  schemas (`src/schemas.js`); unknown keys are stripped, lengths are
+  bounded, types are coerced.
+- **DB SSL:** strict SSL with verification by default, with an opt-out
+  flag for local dev only.
+- **Scheduled jobs:** task generation, audit log retention purge, and
+  login-attempts purge run via `node-cron` inside the API process.
+- **Idle session timeout:** the SPA warns after 25 min of inactivity and
+  signs the user out after a 5 min grace window.
 
 ---
 
-## Planned Integrations
+## Tech stack
 
-- **PointClickCare FHIR API** — automatic admission sync from the facility EHR ($65/facility/month)
-- **MatrixCare API** — alternative EHR integration for facilities on the MatrixCare platform
-- Real-time push notifications for task assignments and overdue alerts
+| Layer           | Tech                                                          |
+| --------------- | ------------------------------------------------------------- |
+| Frontend        | React 19, Vite 7, JS/JSX, inline styles + small `App.css`     |
+| Backend         | Node 18+, Express 4, Postgres 15+ via `pg`                    |
+| Validation      | `zod` (centralised schemas)                                   |
+| Security        | `helmet`, `cors`, `express-rate-limit`, `cookie-parser`       |
+| Auth            | `bcrypt` (cost 12+), `jsonwebtoken` in httpOnly cookie, CSRF  |
+| Audit           | `winston` → local file + Postgres + optional Azure Blob       |
+| Scheduling      | `node-cron`                                                   |
+| Tests           | `vitest` (+ frontend SPA tests via vitest)                    |
+| Target hosting  | Azure App Service + Azure DB for Postgres + Azure Static Web Apps |
 
 ---
 
-## Project Status
+## CI
 
-Current build is a **functional frontend prototype** demonstrating the full intended workflow. Backend infrastructure, persistent data storage, and EHR integrations are planned for the production version.
+`.github/workflows/ci.yml` runs on every push and PR:
+
+- Backend: install → vitest → `npm audit --omit=dev --audit-level=high`
+- Frontend: install → eslint → vitest → `vite build` → `npm audit`
+
+Both jobs run against Node 18 and 20.
+
+---
+
+## What still needs you (outside this repo)
+
+See [`PROD_READINESS.md`](./PROD_READINESS.md) for the full pre-launch
+checklist. Highlights you can't put in source control:
+
+- Sign a Business Associate Agreement with Microsoft Azure and any other
+  vendor that touches PHI.
+- Rotate the placeholder secrets and store production values in Azure Key
+  Vault. Reference them from App Service settings with
+  `@Microsoft.KeyVault(...)` syntax.
+- Provision the Azure resources described in `caretrack-backend/README.md`,
+  with the App Service and Postgres on a private VNet.
+- Stand up MFA (TOTP enrollment + login challenge). The data model leaves
+  room for it; the flow is the work to do.
+- Document the risk analysis, policies, and training records required by
+  §164.308 of the HIPAA Security Rule.

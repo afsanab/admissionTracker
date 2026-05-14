@@ -1,0 +1,99 @@
+# Production Readiness Checklist
+
+Tracks the gap between "the app works" and "it's safe to put real PHI in it."
+Items prefixed with **(code)** are in source control; items prefixed with
+**(ops)** are out-of-band tasks for the operator.
+
+---
+
+## Completed in code
+
+- [x] **(code)** Env-var validation on boot — `src/config.js` fails fast on
+      missing/short `JWT_SECRET`, missing DB config, missing CORS origins.
+- [x] **(code)** Strict DB SSL with verification, with opt-out only for
+      local dev (`DB_SSL_STRICT`).
+- [x] **(code)** Graceful shutdown — SIGTERM/SIGINT close HTTP server,
+      stop scheduled jobs, drain DB pool.
+- [x] **(code)** Deep `/api/health?deep=1` pings Postgres.
+- [x] **(code)** JWT moved to **httpOnly** session cookie + CSRF
+      double-submit (`X-CSRF-Token` header). No tokens in JS storage.
+- [x] **(code)** Per-account login lockout (`LOCKOUT_MAX_ATTEMPTS`,
+      `LOCKOUT_WINDOW_MIN`, `LOCKOUT_DURATION_MIN`) + login attempt
+      history table.
+- [x] **(code)** Forced password change after admin reset
+      (`must_change_password`).
+- [x] **(code)** `zod` request validation on every route, with UUID
+      checks on every `:id` param (SQL-injection guard for path params).
+- [x] **(code)** Pagination on `GET /patients` and `GET /users`.
+- [x] **(code)** Audit events persisted to `audit_log` table + optional
+      Azure Blob append-only shipping.
+- [x] **(code)** Audit + login-attempts retention purge jobs.
+- [x] **(code)** Server-side scheduled task generation — recurring 60-day
+      tasks no longer depend on someone opening the patient.
+- [x] **(code)** Frontend idle-session timeout with warning dialog.
+- [x] **(code)** Frontend `ErrorBoundary` at the SPA root.
+- [x] **(code)** `window.confirm` removed in favour of styled modals.
+- [x] **(code)** `staticwebapp.config.json` with HSTS, CSP, X-Frame-Options,
+      Referrer-Policy, Permissions-Policy.
+- [x] **(code)** GitHub Actions CI: lint + test + build + `npm audit` for
+      both packages on Node 18 and 20.
+- [x] **(code)** Frontend `engines.node`, production env example,
+      `<title>`, favicon, theme color, `noindex`.
+
+---
+
+## Operator action required before go-live
+
+### Secrets
+
+- [ ] **(ops)** Rotate the live Supabase database password.
+- [ ] **(ops)** Rotate the live Resend API key.
+- [ ] **(ops)** Regenerate `JWT_SECRET` (64 bytes hex).
+- [ ] **(ops)** Store the new values in **Azure Key Vault**; reference from
+      App Service settings with `@Microsoft.KeyVault(VaultName=…;SecretName=…)`.
+
+### Azure infrastructure
+
+- [ ] **(ops)** Create Azure Database for PostgreSQL Flexible Server with
+      SSL required and public access disabled.
+- [ ] **(ops)** Create App Service with Managed Identity granted read on
+      Key Vault.
+- [ ] **(ops)** Private endpoints for Postgres and Blob Storage; VNet
+      integration on App Service.
+- [ ] **(ops)** Create the Blob container `caretrack-audit-logs` with a
+      7-year immutability policy.
+- [ ] **(ops)** Enable Azure Defender for PostgreSQL.
+- [ ] **(ops)** Configure Azure Monitor alerts: failed login spikes,
+      account lockouts, 5xx rate, DB CPU > 80%, blob shipping failures.
+- [ ] **(ops)** Set `ALLOWED_ORIGINS` to the production SWA URL only.
+
+### HIPAA paperwork
+
+- [ ] **(ops)** Signed Business Associate Agreement with Microsoft Azure.
+- [ ] **(ops)** Signed BAA with any other PHI-touching vendor (Resend,
+      Sentry/App Insights, etc.) — or replace them with a vendor that has
+      one.
+- [ ] **(ops)** Documented risk analysis per §164.308(a)(1).
+- [ ] **(ops)** Documented policies & procedures, incident response runbook.
+- [ ] **(ops)** Workforce HIPAA training records.
+- [ ] **(ops)** Annual external audit scheduled.
+
+---
+
+## Deferred to a follow-up PR
+
+- [ ] **(code)** MFA (TOTP) enrollment + login challenge + recovery codes.
+- [ ] **(code)** Observability — wire Sentry or Azure Application Insights
+      into both the SPA `ErrorBoundary.onError` and the backend
+      `errorHandler`.
+- [ ] **(code)** Frontend component tests (login flow, accept-invite flow,
+      task panel happy path) with React Testing Library.
+- [ ] **(code)** Backend integration tests with `supertest` + a throwaway
+      Postgres (testcontainers) covering auth, role gates, discharge
+      cascade.
+- [ ] **(code)** OpenAPI document generated from `src/schemas.js`.
+- [ ] **(code)** Soft-delete viewer for discharged patients (regulatory
+      access) — currently filtered out everywhere.
+- [ ] **(code)** Pagination UI on the patient list.
+- [ ] **(code)** Self-serve password reset via email-verified link.
+- [ ] **(code)** Dockerfile for the API (parity with Azure Linux runtime).
