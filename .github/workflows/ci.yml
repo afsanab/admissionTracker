@@ -15,7 +15,8 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        node: ["18", "20"]
+        # Node 18: Vitest 4 / Rolldown use util.styleText (Node 20.12+). Vite 7 needs >= 20.19.
+        node: ["20", "22"]
     defaults:
       run:
         working-directory: caretrack-backend
@@ -36,7 +37,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        node: ["18", "20"]
+        node: ["20", "22"]
     defaults:
       run:
         working-directory: admissions-app
