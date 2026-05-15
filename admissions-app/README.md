@@ -23,7 +23,7 @@ CareTrack is a HIPAA-aware clinical workflow tool designed to streamline patient
 
 The UI calls the CareTrack API. With `npm run dev`, Vite proxies requests from `/api` to `http://localhost:3001`, so run the backend and this app at the same time for full functionality.
 
-**Prerequisites:** Node.js 18 or newer, and PostgreSQL if you are running the API against a local database.
+**Prerequisites:** Node.js 20.19 or newer (or current Node 22 LTS), and PostgreSQL if you are running the API against a local database.
 
 ### 1. Backend (API + database)
 

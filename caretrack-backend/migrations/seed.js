@@ -3,6 +3,8 @@
  * DO NOT run this against a production database.
  *
  * Usage: node migrations/seed.js
+ *
+ * Requires SEED_DEMO_PASSWORD (≥12 chars) in .env — never commit .env.
  */
 
 require("dotenv").config();
@@ -36,16 +38,25 @@ async function seed() {
     process.exit(1);
   }
 
+  const demoPassword = process.env.SEED_DEMO_PASSWORD;
+  if (!demoPassword || demoPassword.length < 12) {
+    console.error(
+      "Set SEED_DEMO_PASSWORD in .env (at least 12 characters) before running seed.\n" +
+      "Use a unique value for each environment; never reuse production credentials."
+    );
+    process.exit(1);
+  }
+
   const client = await pool.connect();
   try {
     console.log("Seeding users...");
 
     const users = [
-      { username: "dr.smith", fullName: "Dr. James Smith", role: "physician", password: "CareTrack2026!" },
-      { username: "dr.patel", fullName: "Dr. Priya Patel", role: "physician", password: "CareTrack2026!" },
-      { username: "admin", fullName: "Admin User", role: "admin", password: "CareTrack2026!" },
-      { username: "j.garcia", fullName: "Julia Garcia", role: "admin", password: "CareTrack2026!" },
-    ];
+      { username: "dr.smith", fullName: "Dr. James Smith", role: "physician" },
+      { username: "dr.patel", fullName: "Dr. Priya Patel", role: "physician" },
+      { username: "admin", fullName: "Admin User", role: "admin" },
+      { username: "j.garcia", fullName: "Julia Garcia", role: "admin" },
+    ].map((u) => ({ ...u, password: demoPassword }));
 
     const userIds = {};
     for (const u of users) {
@@ -60,7 +71,7 @@ async function seed() {
         [id, u.username, hash, u.fullName, u.role]
       );
       userIds[u.username] = id;
-      console.log(`  ✓ ${u.role.padEnd(10)} ${u.username}  (password: ${u.password})`);
+      console.log(`  ✓ ${u.role.padEnd(10)} ${u.username}`);
     }
 
     console.log("\nSeeding patients...");
@@ -192,10 +203,7 @@ async function seed() {
     }
 
     console.log("\n✅ Seed complete!\n");
-    console.log("Demo credentials:");
-    console.log("  Physician : dr.smith  / CareTrack2026!");
-    console.log("  Physician : dr.patel  / CareTrack2026!");
-    console.log("  Admin     : admin     / CareTrack2026!");
+    console.log("Demo users: dr.smith, dr.patel, admin, j.garcia — password is SEED_DEMO_PASSWORD from .env (not echoed here).");
 
   } finally {
     client.release();

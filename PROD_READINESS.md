@@ -36,7 +36,7 @@ Items prefixed with **(code)** are in source control; items prefixed with
 - [x] **(code)** `staticwebapp.config.json` with HSTS, CSP, X-Frame-Options,
       Referrer-Policy, Permissions-Policy.
 - [x] **(code)** GitHub Actions CI: lint + test + build + `npm audit` for
-      both packages on Node 18 and 20.
+      both packages on Node 20 and 22.
 - [x] **(code)** Frontend `engines.node`, production env example,
       `<title>`, favicon, theme color, `noindex`.
 
@@ -46,7 +46,7 @@ Items prefixed with **(code)** are in source control; items prefixed with
 
 ### Secrets
 
-- [ ] **(ops)** Rotate the live Supabase database password.
+- [ ] **(ops)** Rotate the live database credentials (e.g. managed Postgres).
 - [ ] **(ops)** Rotate the live Resend API key.
 - [ ] **(ops)** Regenerate `JWT_SECRET` (64 bytes hex).
 - [ ] **(ops)** Store the new values in **Azure Key Vault**; reference from

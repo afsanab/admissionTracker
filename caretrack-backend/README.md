@@ -72,7 +72,7 @@ caretrack-backend/
 ## Local Development Setup
 
 ### Prerequisites
-- Node.js 18+
+- Node.js 20.19+ (or current Node 22 LTS)
 - PostgreSQL 15+ running locally (or use Docker)
 
 ### 1. Install dependencies
@@ -119,13 +119,7 @@ npm run migrate
 npm run seed
 ```
 
-Demo credentials created by the seed:
-| Role      | Username  | Password         |
-|-----------|-----------|------------------|
-| Physician | dr.smith  | CareTrack2026!   |
-| Physician | dr.patel  | CareTrack2026!   |
-| Admin     | admin     | CareTrack2026!   |
-| Admin     | j.garcia  | CareTrack2026!   |
+Demo accounts created by the seed: **dr.smith**, **dr.patel**, **admin**, **j.garcia**. Set **`SEED_DEMO_PASSWORD`** in `.env` (≥12 characters) before `npm run seed`; all seeded users share that password. It is never printed or committed.
 
 ### 6. Start the server
 ```bash
@@ -296,7 +290,7 @@ All endpoints are prefixed with `/api`.
 
 **Login request:**
 ```json
-{ "username": "dr.smith", "password": "CareTrack2026!" }
+{ "username": "dr.smith", "password": "<your password>" }
 ```
 **Login response:**
 ```json

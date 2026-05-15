@@ -30,13 +30,13 @@ Each package is independent. The frontend talks to the backend over `/api`
 
 ## Quick start
 
-Prereqs: Node 18+, Postgres 15+ (or Supabase / any managed Postgres).
+Prereqs: Node 20.19+ (or current Node 22 LTS), Postgres 15+ (or any managed Postgres).
 
 ```bash
 # 1) Backend
 cd caretrack-backend
 npm install
-cp .env.example .env          # fill in DATABASE_URL + JWT_SECRET
+cp .env.example .env          # DATABASE_URL, JWT_SECRET, SEED_DEMO_PASSWORD (for seed only)
 npm run migrate
 npm run seed                   # optional: demo users + patients
 npm run dev                    # http://localhost:3001
@@ -47,14 +47,7 @@ npm install
 npm run dev                    # http://localhost:5173
 ```
 
-Seed demo logins:
-
-| Role      | Username | Password       |
-| --------- | -------- | -------------- |
-| Physician | dr.smith | CareTrack2026! |
-| Physician | dr.patel | CareTrack2026! |
-| Admin     | admin    | CareTrack2026! |
-| Admin     | j.garcia | CareTrack2026! |
+After `npm run seed`, demo accounts are **dr.smith**, **dr.patel**, **admin**, and **j.garcia**. Set **`SEED_DEMO_PASSWORD`** (≥12 characters) in `caretrack-backend/.env` before seeding; that value is the login password for all of them and is not stored in the repository.
 
 ---
 
@@ -88,7 +81,7 @@ Seed demo logins:
 | Layer           | Tech                                                          |
 | --------------- | ------------------------------------------------------------- |
 | Frontend        | React 19, Vite 7, JS/JSX, inline styles + small `App.css`     |
-| Backend         | Node 18+, Express 4, Postgres 15+ via `pg`                    |
+| Backend         | Node 20.19+, Express 4, Postgres 15+ via `pg`                 |
 | Validation      | `zod` (centralised schemas)                                   |
 | Security        | `helmet`, `cors`, `express-rate-limit`, `cookie-parser`       |
 | Auth            | `bcrypt` (cost 12+), `jsonwebtoken` in httpOnly cookie, CSRF  |
@@ -106,7 +99,7 @@ Seed demo logins:
 - Backend: install → vitest → `npm audit --omit=dev --audit-level=high`
 - Frontend: install → eslint → vitest → `vite build` → `npm audit`
 
-Both jobs run against Node 18 and 20.
+Both jobs run against Node 20 and 22.
 
 ---
 
