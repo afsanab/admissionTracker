@@ -51,6 +51,7 @@ Items prefixed with **(code)** are in source control; items prefixed with
 - [ ] **(ops)** Regenerate `JWT_SECRET` (64 bytes hex).
 - [ ] **(ops)** Store the new values in **Azure Key Vault**; reference from
       App Service settings with `@Microsoft.KeyVault(VaultName=…;SecretName=…)`.
+      Step-by-step for this repo: [docs/Azure-KeyVault-App-Service.md](docs/Azure-KeyVault-App-Service.md).
 
 ### Azure infrastructure
 

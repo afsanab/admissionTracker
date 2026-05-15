@@ -1,0 +1,16 @@
+{
+  "name": "admission-tracker",
+  "private": true,
+  "description": "Root meta-package: backend and SPA live in caretrack-backend/ and admissions-app/.",
+  "scripts": {
+    "postinstall": "npm install --prefix caretrack-backend --no-audit --no-fund && npm install --prefix admissions-app --no-audit --no-fund",
+    "install:all": "npm install --prefix caretrack-backend --no-audit --no-fund && npm install --prefix admissions-app --no-audit --no-fund",
+    "ci:all": "npm ci --prefix caretrack-backend --no-audit --no-fund && npm ci --prefix admissions-app --no-audit --no-fund",
+    "test": "npm test --prefix caretrack-backend && npm test --prefix admissions-app",
+    "lint": "npm run lint --prefix admissions-app",
+    "build": "npm run build --prefix admissions-app"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
