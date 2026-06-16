@@ -18,8 +18,9 @@ a Node + Postgres backend (`caretrack-backend/`) and a React + Vite SPA
 ```
 admissionTracker/
 ├── admissions-app/        # React 19 + Vite SPA
-├── caretrack-backend/     # Node + Express + Postgres API
-├── .github/workflows/     # CI (lint + test + build + audit)
+├── caretrack-backend/     # Node + Express + Postgres API (incl. Dockerfile)
+├── .github/workflows/     # CI (lint/test/build/audit) + CD (App Service + SWA)
+├── docs/                  # Azure deployment playbooks
 └── README.md
 ```
 
@@ -100,6 +101,10 @@ After `npm run seed`, demo accounts are **dr.smith**, **dr.patel**, **admin**, a
 - Frontend: install → eslint → vitest → `vite build` → `npm audit`
 
 Both jobs run against Node 20 and 22.
+
+Two deploy workflows are also included and triggered manually until you wire
+their secrets: `deploy-backend.yml` (Azure App Service) and
+`deploy-frontend.yml` (Azure Static Web Apps).
 
 ---
 

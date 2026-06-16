@@ -62,8 +62,10 @@ caretrack-backend/
 ├── migrations/
 │   ├── 001_initial_schema.sql     # Full DB schema
 │   ├── run.js                     # Migration runner
-│   └── seed.js                    # Dev seed data
+│   ├── seed.js                    # Dev seed data (never run in production)
+│   └── create-admin.js            # Bootstrap the first admin (safe in production)
 ├── logs/                          # Local audit logs (auto-created)
+├── Dockerfile                     # Production container image (Node 20)
 ├── .env.example                   # Environment variable template
 └── package.json
 ```
@@ -285,6 +287,46 @@ az postgres flexible-server firewall-rule delete \
   --name caretrack-db \
   --rule-name temp-deploy
 ```
+
+### Step 6: Create the first admin
+
+`npm run seed` is dev-only and must never touch production. To bootstrap the
+first administrator (who then invites everyone else from the UI), run the
+production-safe `create-admin` script once against the production database.
+Pass credentials as environment variables so the password stays out of shell
+history:
+
+```bash
+ADMIN_USERNAME=jane.admin \
+ADMIN_PASSWORD='a-long-unique-password' \
+ADMIN_FULL_NAME='Jane Admin' \
+DATABASE_URL='postgresql://...sslmode=require' \
+JWT_SECRET='<your 64-byte hex>' \
+ALLOWED_ORIGINS='https://your-app.azurestaticapps.net' \
+npm run create-admin
+```
+
+It refuses to overwrite an existing username; use the in-app admin
+password-reset flow to change an existing user's password.
+
+### Optional: run as a container
+
+A production `Dockerfile` is included (Node 20, non-root, healthcheck). Build
+and run locally with:
+
+```bash
+docker build -t caretrack-api ./caretrack-backend
+docker run --rm -p 8080:8080 --env-file caretrack-backend/.env caretrack-api
+```
+
+App Service for Containers and Azure Container Apps can both deploy this image.
+
+### Optional: continuous deployment
+
+`.github/workflows/deploy-backend.yml` (App Service) and
+`.github/workflows/deploy-frontend.yml` (Static Web Apps) are included as
+manually-triggered pipelines. Add the documented secrets/variables and switch
+on the `push` trigger when you're ready for automatic deploys.
 
 ---
 

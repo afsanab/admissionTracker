@@ -37,6 +37,14 @@ Items prefixed with **(code)** are in source control; items prefixed with
       Referrer-Policy, Permissions-Policy.
 - [x] **(code)** GitHub Actions CI: lint + test + build + `npm audit` for
       both packages on Node 20 and 22.
+- [x] **(code)** GitHub Actions CD scaffolding: `deploy-backend.yml`
+      (App Service) and `deploy-frontend.yml` (Static Web Apps),
+      manually-triggered until secrets are wired and the `push` trigger is
+      enabled.
+- [x] **(code)** Production `Dockerfile` for the API (Node 20, non-root user,
+      healthcheck) + `.dockerignore`.
+- [x] **(code)** Production-safe first-admin bootstrap (`npm run create-admin`)
+      so the initial administrator can be created without the dev seed.
 - [x] **(code)** Frontend `engines.node`, production env example,
       `<title>`, favicon, theme color, `noindex`.
 
@@ -67,6 +75,12 @@ Items prefixed with **(code)** are in source control; items prefixed with
 - [ ] **(ops)** Configure Azure Monitor alerts: failed login spikes,
       account lockouts, 5xx rate, DB CPU > 80%, blob shipping failures.
 - [ ] **(ops)** Set `ALLOWED_ORIGINS` to the production SWA URL only.
+- [ ] **(ops)** Create the first admin against the production DB with
+      `npm run create-admin` (see `caretrack-backend/README.md`), then invite
+      the rest of the team from the UI.
+- [ ] **(ops)** Wire the CD workflow secrets (`AZURE_WEBAPP_PUBLISH_PROFILE`,
+      `AZURE_STATIC_WEB_APPS_API_TOKEN`) and variables (`AZURE_WEBAPP_NAME`,
+      `VITE_API_BASE`), then enable the `push` trigger if you want auto-deploy.
 
 ### HIPAA paperwork
 
@@ -97,4 +111,3 @@ Items prefixed with **(code)** are in source control; items prefixed with
       access) — currently filtered out everywhere.
 - [ ] **(code)** Pagination UI on the patient list.
 - [ ] **(code)** Self-serve password reset via email-verified link.
-- [ ] **(code)** Dockerfile for the API (parity with Azure Linux runtime).
