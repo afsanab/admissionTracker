@@ -11,7 +11,7 @@ Node.js + Express + PostgreSQL backend for the CareTrack nursing home admissions
 3. [Local Development Setup](#local-development-setup)
 4. [Azure Production Setup](#azure-production-setup)
 5. [API Reference](#api-reference)
-6. [Wiring to the React Frontend](#wiring-to-the-react-frontend)
+6. [Frontend Integration](#frontend-integration)
 7. [HIPAA Compliance Checklist](#hipaa-compliance-checklist)
 8. [Security Notes](#security-notes)
 
@@ -55,9 +55,10 @@ caretrack-backend/
 │   │   ├── auth.js                # JWT verification, role guards
 │   │   ├── audit.js               # HIPAA audit logger
 │   │   └── errorHandler.js        # Centralized error handling
-│   ├── db/
-│   │   └── pool.js                # PostgreSQL connection pool
-│   └── api-client.js              # Drop into your React frontend
+│   ├── services/                  # session/CSRF, lockout, scheduler, invite email
+│   ├── schemas.js                 # zod request/response schemas
+│   └── db/
+│       └── pool.js                # PostgreSQL connection pool
 ├── migrations/
 │   ├── 001_initial_schema.sql     # Full DB schema
 │   ├── run.js                     # Migration runner

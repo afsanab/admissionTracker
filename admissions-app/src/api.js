@@ -12,7 +12,6 @@
 import { getActiveTasks } from "./taskLogic.js";
 
 const BASE = import.meta.env.VITE_API_BASE || "";
-const CSRF_COOKIE = "caretrack_csrf";
 
 function readCsrfCookie() {
   const m = document.cookie.match(/(?:^|;\s*)caretrack_csrf=([^;]+)/);
@@ -194,13 +193,3 @@ export async function loadPatientsAndTasks() {
   );
   return { admissions: adm, taskState };
 }
-
-// Compat shims kept so any imports that haven't been updated yet don't crash.
-// These are no-ops because the JWT now lives in an httpOnly cookie.
-export function getStoredToken() {
-  return null;
-}
-export function setStoredToken() {
-  /* no-op: session cookie is server-managed */
-}
-export const CSRF_COOKIE_NAME = CSRF_COOKIE;
