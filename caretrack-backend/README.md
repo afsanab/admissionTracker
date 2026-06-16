@@ -213,20 +213,32 @@ az webapp create \
   --name caretrack-api \
   --resource-group caretrack-rg \
   --plan caretrack-plan \
-  --runtime "NODE:18-lts"
+  --runtime "NODE:20-lts"
 ```
+
+> The app requires Node 20.19+ (Node 22 LTS also supported). Do **not** use the
+> Node 18 runtime — the toolchain depends on APIs added in Node 20.
 
 Enable Managed Identity (so App Service can pull secrets from Key Vault without credentials in code):
 ```bash
 az webapp identity assign \
   --name caretrack-api \
   --resource-group caretrack-rg
+```
 
-# Grant the identity access to Key Vault
-az keyvault set-policy \
-  --name caretrack-vault \
-  --object-id $(az webapp identity show --name caretrack-api --resource-group caretrack-rg --query principalId -o tsv) \
-  --secret-permissions get list
+Grant the identity read access to Key Vault. If the vault uses **RBAC
+authorization** (recommended — see
+[docs/Azure-KeyVault-App-Service.md](../docs/Azure-KeyVault-App-Service.md)),
+assign the **Key Vault Secrets User** role:
+```bash
+PRINCIPAL_ID=$(az webapp identity show --name caretrack-api --resource-group caretrack-rg --query principalId -o tsv)
+VAULT_ID=$(az keyvault show --name caretrack-vault --resource-group caretrack-rg --query id -o tsv)
+
+az role assignment create \
+  --role "Key Vault Secrets User" \
+  --assignee-object-id "$PRINCIPAL_ID" \
+  --assignee-principal-type ServicePrincipal \
+  --scope "$VAULT_ID"
 ```
 
 Set App Service environment variables (reference Key Vault using `@Microsoft.KeyVault(...)` syntax):
@@ -284,23 +296,36 @@ All endpoints are prefixed with `/api`.
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| POST | `/auth/login` | None | Login — returns JWT |
-| POST | `/auth/logout` | Required | Logout (logs event) |
+| POST | `/auth/login` | None | Login — sets session + CSRF cookies |
+| POST | `/auth/logout` | Required | Logout (clears cookies, logs event) |
 | GET | `/auth/me` | Required | Get current user |
 | POST | `/auth/change-password` | Required | Change own password |
+| GET | `/auth/invite-info` | None | Look up an invitation by token |
+| POST | `/auth/register` | None | Accept an invitation and create the account |
 
 **Login request:**
 ```json
 { "username": "dr.smith", "password": "<your password>" }
 ```
-**Login response:**
+
+**Login response** — the JWT is delivered as an **httpOnly `caretrack_session`
+cookie** (not in the body), alongside a readable `caretrack_csrf` cookie. The
+body carries only the user shape:
 ```json
 {
-  "token": "eyJhbG...",
-  "user": { "id": "...", "username": "dr.smith", "role": "physician", "fullName": "Dr. James Smith" },
+  "user": {
+    "id": "...",
+    "username": "dr.smith",
+    "role": "physician",
+    "fullName": "Dr. James Smith",
+    "mustChangePassword": false
+  },
   "expiresIn": "8h"
 }
 ```
+
+All state-changing requests must include the CSRF cookie value in the
+`X-CSRF-Token` header.
 
 ### Patients
 
@@ -330,81 +355,49 @@ All endpoints are prefixed with `/api`.
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/users` | List all users |
-| POST | `/users` | Create user |
-| PATCH | `/users/:id` | Update user |
-| POST | `/users/:id/reset-password` | Reset a user's password |
+| GET | `/users` | List all users (paginated) |
+| PATCH | `/users/:id` | Update user (role, active, full name) |
+| POST | `/users/:id/reset-password` | Reset a user's password (forces change on next login) |
+
+> New accounts are not created directly. An admin issues an **invitation**; the
+> invitee accepts it via `POST /auth/register` (see below), which creates their
+> account and signs them in.
+
+### Invitations (Admin only)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/invitations` | Create an invitation (username + role); optionally emails a link |
+| GET | `/invitations` | List invitations |
+| DELETE | `/invitations/:id` | Revoke an unused invitation |
+
+### Health
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/health` | Liveness check |
+| GET | `/health?deep=1` | Readiness check — also pings PostgreSQL (`503` if DB is down) |
 
 ---
 
-## Wiring to the React Frontend
+## Frontend Integration
 
-1. Copy `src/api-client.js` into your React project as `src/api.js`
+The React SPA in [`../admissions-app`](../admissions-app) is already wired to
+this API. The client lives in
+[`admissions-app/src/api.js`](../admissions-app/src/api.js) and handles auth,
+CSRF, and the snake_case ↔ camelCase mapping between the DB rows and the UI
+shape (`patientRowToAdmission` / `admissionToApiBody`).
 
-2. Add to your frontend `.env`:
-   ```
-   VITE_API_URL=http://localhost:3001/api
-   ```
+Key points if you build your own client:
 
-3. Update `handleLogin` in `App.jsx`:
-   ```js
-   import { auth, patients, tasks, setToken, clearToken } from "./api";
-
-   async function handleLogin({ username, password }) {
-     try {
-       const { token, user } = await auth.login(username, password);
-       setToken(token);                       // store JWT in memory
-       setUser(user);
-       const { patients: pts } = await patients.list();
-       setAdmissions(pts.map(mapPatient));    // map snake_case → camelCase
-     } catch (err) {
-       setError(err.message);
-     }
-   }
-   ```
-
-4. Replace in-memory state mutations with API calls:
-   ```js
-   // Promote to in-house
-   async function promoteToInhouse(id) {
-     await patients.admit(id);
-     const { patients: pts } = await patients.list();
-     setAdmissions(pts.map(mapPatient));
-   }
-
-   // Discharge
-   async function dischargePatient(id) {
-     await patients.discharge(id);
-     setAdmissions(prev => prev.filter(a => a.id !== id));
-     setDischargeId(null);
-   }
-
-   // Complete task
-   async function completeTask(patientId, taskId) {
-     await tasks.complete(patientId, taskId);
-     // refresh task list for this patient
-   }
-   ```
-
-5. Map DB field names (snake_case) to the existing frontend shape (camelCase):
-   ```js
-   function mapPatient(p) {
-     return {
-       id: p.id,
-       first: p.first_name,
-       last: p.last_name,
-       dob: p.dob,
-       room: p.room,
-       arrival: p.arrival_at,
-       dx: p.diagnosis,
-       notes: p.notes,
-       status: p.status,
-       admitTs: p.admit_ts ? new Date(p.admit_ts).getTime() : null,
-       physician: p.physician_username,
-       location: p.location,
-     };
-   }
-   ```
+- **No JWT in JS storage.** Login sets an httpOnly `caretrack_session` cookie
+  and a readable `caretrack_csrf` cookie. Send every request with
+  `credentials: "include"`, and echo the CSRF cookie value back in the
+  `X-CSRF-Token` header on all state-changing requests (POST/PATCH/DELETE).
+- **API base.** Locally, Vite proxies `/api` to `http://localhost:3001`. For a
+  standalone build, set `VITE_API_BASE` to the API origin (no trailing slash).
+- **Session checks.** Call `GET /api/auth/me` on boot to determine whether the
+  session cookie is still valid.
 
 ---
 
@@ -422,7 +415,7 @@ All endpoints are prefixed with `/api`.
 - [x] Request body size capped (512KB)
 - [x] No PHI in server logs (Morgan configured for header-only logging in production)
 - [x] SSL required for database connections
-- [x] Soft-delete for discharged patients (PHI retained for 6 years per HIPAA)
+- [x] Soft-delete for discharged patients — records are retained (`discharged_at` set, filtered from all active queries), not hard-deleted, so PHI is preserved per HIPAA. A UI/endpoint to *view* discharged records is not yet built (see `PROD_READINESS.md`).
 - [x] Audit logs shipped to Azure Blob Storage with immutability policy
 
 ### 🔲 Required before production go-live
@@ -444,7 +437,12 @@ All endpoints are prefixed with `/api`.
 
 ## Security Notes
 
-**JWT tokens are stored in memory only** in the provided API client — not in `localStorage` or cookies. This means the token is lost on page refresh (user must re-login). This is intentional and appropriate for PHI-handling applications. For a better UX, consider a short-lived httpOnly cookie with CSRF protection instead.
+**The JWT lives in an httpOnly `caretrack_session` cookie** — never in
+`localStorage`, `sessionStorage`, or JS-accessible memory, so it cannot be read
+by XSS. State-changing requests are protected with a double-submit CSRF token
+(`caretrack_csrf` cookie echoed back in the `X-CSRF-Token` header). In
+production the cookies are `Secure`, and `SameSite=none` is required when the
+SPA and API are on different sites. See `src/services/session.js`.
 
 **Passwords must be at least 12 characters.** Enforce complexity requirements in your organization's password policy.
 
